@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /painel-eletricista/{doc} {
+      // ATENÇÃO: qualquer pessoa com a configuração do Firebase (que fica
+      // dentro do próprio app) consegue ler e escrever aqui. Isso é aceitável
+      // pra uso interno de uma pequena equipe, mas não é uma proteção forte.
+      // Veja o aviso de segurança no README.md antes de usar em produção.
+      allow read, write: if true;
+    }
+  }
+}

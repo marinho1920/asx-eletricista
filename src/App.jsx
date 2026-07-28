@@ -1,0 +1,1183 @@
+import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
+import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound } from "lucide-react";
+import { storageGet, storageSet } from "./firebase.js";
+
+const STATUS = {
+  agendado: { label: "Agendado", color: "#8A93A3", glow: "none" },
+  andamento: { label: "Em andamento", color: "#F2B705", glow: "0 0 10px #F2B70588" },
+  concluido: { label: "Concluído", color: "#2DD4BF", glow: "0 0 10px #2DD4BF88" },
+  urgente: { label: "Urgência", color: "#E85D4E", glow: "0 0 10px #E85D4E88" },
+};
+const STATUS_ORDER = ["agendado", "andamento", "concluido", "urgente"];
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+function fmtBRL(v) {
+  const n = parseFloat(v);
+  if (!n && n !== 0) return null;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function fmtDateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+function fmtDateLabel(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const weekday = dt.toLocaleDateString("pt-BR", { weekday: "short" });
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")} · ${weekday}`;
+}
+function genCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+const inputStyle = {
+  width: "100%",
+  background: "#12161D",
+  border: "1px solid #2A3140",
+  color: "#F5F6F7",
+  borderRadius: 8,
+  padding: "10px 12px",
+  fontSize: 14,
+  outline: "none",
+};
+
+function Field({ label, children, style }) {
+  return (
+    <div style={style}>
+      <label style={{ display: "block", fontSize: 11.5, color: "#8A93A3", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+// ---- Teclado personalizado ----
+const KeyboardCtx = createContext(null);
+function useKeyboardCtx() {
+  return useContext(KeyboardCtx);
+}
+
+function KeyboardProvider({ children }) {
+  const [activeId, setActiveId] = useState(null);
+  const [tab, setTab] = useState("abc");
+  const [shift, setShift] = useState(false);
+  const registry = useRef({});
+
+  function registerField(id, entry) {
+    registry.current[id] = entry;
+  }
+  function unregisterField(id) {
+    delete registry.current[id];
+    setActiveId((cur) => (cur === id ? null : cur));
+  }
+  function openField(id, opts) {
+    setActiveId(id);
+    setTab(opts && opts.numeric ? "num" : "abc");
+    setShift(false);
+  }
+  function closeKeyboard() {
+    setActiveId(null);
+  }
+  function currentEntry() {
+    return activeId ? registry.current[activeId] : null;
+  }
+  function insertChar(ch) {
+    const entry = currentEntry();
+    if (!entry) return;
+    let next = (entry.value || "") + ch;
+    if (entry.maxLength && next.length > entry.maxLength) return;
+    entry.onChange(next);
+  }
+  function backspace() {
+    const entry = currentEntry();
+    if (!entry) return;
+    entry.onChange((entry.value || "").slice(0, -1));
+  }
+  function insertSpace() {
+    insertChar(" ");
+  }
+
+  const ctx = { activeId, tab, setTab, shift, setShift, registerField, unregisterField, openField, closeKeyboard, insertChar, backspace, insertSpace };
+
+  return (
+    <KeyboardCtx.Provider value={ctx}>
+      {children}
+      <CustomKeyboard />
+    </KeyboardCtx.Provider>
+  );
+}
+
+function KeyboardField({ value, onChange, placeholder, style, numeric, mono, uppercase, multiline, maxLength }) {
+  const id = useId();
+  const ctx = useKeyboardCtx();
+  ctx.registerField(id, { value: value || "", onChange, numeric, maxLength });
+  useEffect(() => () => ctx.unregisterField(id), []); // eslint-disable-line
+
+  const isActive = ctx.activeId === id;
+  const raw = value || "";
+  const display = uppercase ? raw.toUpperCase() : raw;
+
+  return (
+    <div
+      onClick={() => ctx.openField(id, { numeric })}
+      tabIndex={0}
+      style={{
+        ...inputStyle,
+        display: "flex",
+        alignItems: multiline ? "flex-start" : "center",
+        minHeight: multiline ? 60 : undefined,
+        whiteSpace: multiline ? "pre-wrap" : "nowrap",
+        overflow: multiline ? "auto" : "hidden",
+        fontFamily: mono ? "monospace" : undefined,
+        letterSpacing: mono ? 2 : undefined,
+        fontWeight: mono ? 700 : undefined,
+        border: isActive ? "1px solid #F2B70588" : inputStyle.border,
+        cursor: "text",
+        ...style,
+      }}
+    >
+      {display ? <span>{display}</span> : <span style={{ color: "#5A6472" }}>{placeholder}</span>}
+      {isActive && (
+        <span style={{ display: "inline-block", width: 1.5, height: 15, background: "#F2B705", marginLeft: 2, animation: "kbBlink 1s step-end infinite" }} />
+      )}
+    </div>
+  );
+}
+
+const KB_ROWS = {
+  abc: ["QWERTYUIOP".split(""), "ASDFGHJKL".split(""), "ZXCVBNM".split("")],
+  num: ["1234567890".split(""), "-/:;()R$&@\"".split(""), ".,?!'".split("")],
+  sym: ["[]{}#%^*+=".split(""), "_\\|~<>€£¥•".split(""), ".,?!'".split("")],
+};
+
+function CustomKeyboard() {
+  const ctx = useKeyboardCtx();
+  if (!ctx || !ctx.activeId) return null;
+  const rows = KB_ROWS[ctx.tab];
+
+  function charFor(c) {
+    if (ctx.tab !== "abc") return c;
+    return ctx.shift ? c : c.toLowerCase();
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "#181D26",
+        borderTop: "1px solid #2A3140",
+        padding: "10px 8px calc(10px + env(safe-area-inset-bottom, 0px))",
+        zIndex: 200,
+        boxShadow: "0 -8px 24px #0006",
+        fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
+      }}
+    >
+      <style>{`
+        @keyframes kbBlink { 0%, 50% { opacity: 1 } 51%, 100% { opacity: 0 } }
+        .kb-key { background: #262D3A; border: none; color: #F5F6F7; border-radius: 6px; padding: 11px 0; font-size: 14px; font-weight: 600; cursor: pointer; flex: 1; }
+        .kb-key:active { background: #323B4A; }
+        .kb-row { display: flex; gap: 5px; margin-bottom: 5px; }
+      `}</style>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "0 2px" }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => ctx.setTab("abc")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "abc" ? "#F2B705" : "#232A36", color: ctx.tab === "abc" ? "#14181F" : "#8A93A3" }}>
+            ABC
+          </button>
+          <button onClick={() => ctx.setTab("num")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "num" ? "#F2B705" : "#232A36", color: ctx.tab === "num" ? "#14181F" : "#8A93A3" }}>
+            123
+          </button>
+          <button onClick={() => ctx.setTab("sym")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "sym" ? "#F2B705" : "#232A36", color: ctx.tab === "sym" ? "#14181F" : "#8A93A3" }}>
+            #+=
+          </button>
+        </div>
+        <button onClick={ctx.closeKeyboard} style={{ background: "none", border: "none", color: "#8A93A3", padding: 6 }}>
+          <X size={16} />
+        </button>
+      </div>
+
+      {rows.map((row, i) => (
+        <div className="kb-row" key={i}>
+          {i === 2 && ctx.tab === "abc" && (
+            <button className="kb-key" style={{ flex: 1.5, background: ctx.shift ? "#F2B705" : "#232A36", color: ctx.shift ? "#14181F" : "#F5F6F7" }} onClick={() => ctx.setShift((s) => !s)}>
+              ⇧
+            </button>
+          )}
+          {row.map((c) => (
+            <button key={c} className="kb-key" onClick={() => ctx.insertChar(charFor(c))}>
+              {charFor(c)}
+            </button>
+          ))}
+          {i === 2 && (
+            <button className="kb-key" style={{ flex: 1.5 }} onClick={ctx.backspace}>
+              ⌫
+            </button>
+          )}
+        </div>
+      ))}
+
+      <div className="kb-row">
+        <button className="kb-key" style={{ flex: 1.3 }} onClick={() => ctx.setTab(ctx.tab === "abc" ? "num" : "abc")}>
+          {ctx.tab === "abc" ? "123" : "ABC"}
+        </button>
+        <button className="kb-key" style={{ flex: 4 }} onClick={ctx.insertSpace}>
+          espaço
+        </button>
+        <button className="kb-key" style={{ flex: 1.7, background: "#F2B705", color: "#14181F" }} onClick={ctx.closeKeyboard}>
+          Concluído
+        </button>
+      </div>
+    </div>
+  );
+}
+// ---- fim teclado personalizado ----
+
+export default function App() {
+  return (
+    <KeyboardProvider>
+      <AppInner />
+    </KeyboardProvider>
+  );
+}
+
+function AppInner() {
+  const [booting, setBooting] = useState(true);
+  const [accounts, setAccounts] = useState(null); // null = not loaded yet
+  const [jobs, setJobs] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [removedAccounts, setRemovedAccounts] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [error, setError] = useState(null);
+  const [screen, setScreen] = useState("home"); // home | login | membros
+  const [pendingAdmin, setPendingAdmin] = useState(false);
+  const [restrictedMsg, setRestrictedMsg] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const a = await storageGet("contas");
+        setAccounts(a ? JSON.parse(a) : []);
+      } catch (e) {
+        setAccounts([]);
+      }
+      try {
+        const j = await storageGet("servicos");
+        if (j) setJobs(JSON.parse(j));
+      } catch (e) {}
+      try {
+        const r = await storageGet("recuperacoes");
+        if (r) setRequests(JSON.parse(r));
+      } catch (e) {}
+      try {
+        const rm = await storageGet("contas_removidas");
+        if (rm) setRemovedAccounts(JSON.parse(rm));
+      } catch (e) {}
+      setBooting(false);
+    })();
+  }, []);
+
+  async function persistAccounts(next) {
+    setAccounts(next);
+    try {
+      await storageSet("contas", JSON.stringify(next));
+    } catch (e) {
+      setError("Não consegui salvar as contas. Tente de novo.");
+    }
+  }
+
+  async function persistJobs(next) {
+    setJobs(next);
+    try {
+      const ok = await storageSet("servicos", JSON.stringify(next));
+      if (!ok) setError("Não consegui salvar. Tente de novo.");
+      else setError(null);
+    } catch (e) {
+      setError("Não consegui salvar. Tente de novo.");
+    }
+  }
+
+  async function persistRequests(next) {
+    setRequests(next);
+    try {
+      await storageSet("recuperacoes", JSON.stringify(next));
+    } catch (e) {
+      setError("Não consegui salvar a solicitação. Tente de novo.");
+    }
+  }
+
+  async function persistRemovedAccounts(next) {
+    setRemovedAccounts(next);
+    try {
+      await storageSet("contas_removidas", JSON.stringify(next));
+    } catch (e) {}
+  }
+
+  if (booting || accounts === null) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#14181F", color: "#8A93A3", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13 }}>
+        Carregando…
+      </div>
+    );
+  }
+
+  if (currentUser) {
+    return (
+      <MainApp
+        currentUser={currentUser}
+        onLogout={() => {
+          setCurrentUser(null);
+          setScreen("home");
+        }}
+        accounts={accounts}
+        persistAccounts={persistAccounts}
+        jobs={jobs}
+        persistJobs={persistJobs}
+        requests={requests}
+        persistRequests={persistRequests}
+        removedAccounts={removedAccounts}
+        persistRemovedAccounts={persistRemovedAccounts}
+        error={error}
+        initialShowAdmin={pendingAdmin && currentUser.papel === "dono"}
+        onAdminOpened={() => setPendingAdmin(false)}
+        restrictedMsg={restrictedMsg && pendingAdmin && currentUser.papel !== "dono"}
+        onDismissRestricted={() => {
+          setRestrictedMsg(false);
+          setPendingAdmin(false);
+        }}
+      />
+    );
+  }
+
+  if (screen === "login") {
+    return (
+      <LoginScreen
+        accounts={accounts}
+        removedAccounts={removedAccounts}
+        onBack={() => {
+          setScreen("home");
+          setPendingAdmin(false);
+        }}
+        onForgotCode={() => setScreen("recuperar")}
+        onCreateOwner={(nome, codigo) => {
+          const owner = { id: uid(), nome, codigo, papel: "dono", bloqueado: false };
+          persistAccounts([owner]);
+          setCurrentUser(owner);
+        }}
+        onLogin={(acc) => {
+          if (pendingAdmin && acc.papel !== "dono") setRestrictedMsg(true);
+          setCurrentUser(acc);
+        }}
+      />
+    );
+  }
+
+  if (screen === "recuperar") {
+    return (
+      <RecoveryScreen
+        accounts={accounts}
+        requests={requests}
+        persistRequests={persistRequests}
+        onBack={() => setScreen("login")}
+      />
+    );
+  }
+
+  if (screen === "membros") {
+    return <MembersScreen accounts={accounts} onBack={() => setScreen("home")} />;
+  }
+
+  return (
+    <HomeScreen
+      onLogin={() => {
+        setPendingAdmin(false);
+        setScreen("login");
+      }}
+      onAdmin={() => {
+        setPendingAdmin(true);
+        setScreen("login");
+      }}
+      onMembers={() => setScreen("membros")}
+    />
+  );
+}
+
+function HomeScreen({ onLogin, onAdmin, onMembers }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 36 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 13, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 24px #F2B70555" }}>
+            <Zap size={30} color="#14181F" fill="#14181F" />
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em" }}>Painel de Serviços</div>
+            <div style={{ fontSize: 12, color: "#8A93A3", letterSpacing: "0.02em", marginTop: 2 }}>ELETRICISTA RESIDENCIAL</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <HomeButton icon={<Lock size={18} />} label="Login" desc="Entrar com seu código de acesso" onClick={onLogin} primary />
+          <HomeButton icon={<ShieldCheck size={18} />} label="Gerenciamento de contas" desc="Área restrita ao dono" onClick={onAdmin} />
+          <HomeButton icon={<Users size={18} />} label="Membros" desc="Ver quem faz parte da equipe" onClick={onMembers} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeButton({ icon, label, desc, onClick, primary }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        textAlign: "left",
+        background: primary ? "#F2B705" : "#1A202B",
+        border: primary ? "none" : "1px solid #262D3A",
+        borderRadius: 12,
+        padding: "16px 18px",
+        color: primary ? "#14181F" : "#F5F6F7",
+      }}
+    >
+      <div style={{ flexShrink: 0, width: 36, height: 36, borderRadius: 9, background: primary ? "#14181F22" : "#232A36", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: 14.5, fontWeight: 700 }}>{label}</div>
+        <div style={{ fontSize: 12, color: primary ? "#14181Fcc" : "#8A93A3", marginTop: 1 }}>{desc}</div>
+      </div>
+    </button>
+  );
+}
+
+function MembersScreen({ accounts, onBack }) {
+  const active = accounts.filter((a) => !a.bloqueado);
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ maxWidth: 420, margin: "0 auto" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A93A3", fontSize: 13, padding: "10px 0 20px", marginLeft: -2 }}>
+          <ChevronLeft size={16} /> Voltar
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+          <Users size={18} color="#F2B705" />
+          <div style={{ fontSize: 17, fontWeight: 700 }}>Membros da equipe</div>
+        </div>
+        {active.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#8A93A3" }}>Nenhuma conta cadastrada ainda.</div>
+        ) : (
+          <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 12, overflow: "hidden" }}>
+            {active.map((a) => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: "1px solid #1F2530" }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#232A36", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#C9D0DB" }}>
+                  {a.nome.trim().charAt(0).toUpperCase()}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{a.nome}</div>
+                {a.papel === "dono" && <span style={{ fontSize: 10, color: "#F2B705", border: "1px solid #F2B70555", borderRadius: 5, padding: "1px 6px", marginLeft: "auto" }}>DONO</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ accounts, removedAccounts, onCreateOwner, onLogin, onBack, onForgotCode }) {
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState("");
+  const [setupName, setSetupName] = useState("");
+  const [setupCode, setSetupCode] = useState(genCode());
+
+  const needsSetup = accounts.length === 0;
+
+  function tryLogin() {
+    const acc = accounts.find((a) => a.codigo.toUpperCase() === code.trim().toUpperCase());
+    if (!acc) {
+      const removed = (removedAccounts || []).find((r) => r.codigo.toUpperCase() === code.trim().toUpperCase());
+      if (removed) {
+        const data = new Date(removed.removidoEm).toLocaleDateString("pt-BR");
+        setMsg(`Sua conta (${removed.nome}) foi removida em ${data}. Fale com o dono se tiver dúvidas.`);
+      } else {
+        setMsg("Código não encontrado.");
+      }
+      return;
+    }
+    if (acc.bloqueado) {
+      setMsg("Essa conta está bloqueada. Fale com o responsável.");
+      return;
+    }
+    onLogin(acc);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A93A3", fontSize: 13, padding: "0 0 18px", marginLeft: -2 }}>
+          <ChevronLeft size={16} /> Voltar
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 28 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 9, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px #F2B70544" }}>
+            <Zap size={22} color="#14181F" fill="#14181F" />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>Painel de Serviços</div>
+        </div>
+
+        {needsSetup ? (
+          <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <ShieldCheck size={16} color="#F2B705" />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Primeira vez por aqui</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 16 }}>Crie sua conta de dono. Você vai poder cadastrar e gerenciar os ajudantes depois.</div>
+            <Field label="Seu nome" style={{ marginBottom: 12 }}>
+              <KeyboardField value={setupName} onChange={setSetupName} placeholder="Ex: Alexandre" />
+            </Field>
+            <Field label="Seu código de acesso" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <KeyboardField value={setupCode} onChange={(v) => setSetupCode(v.toUpperCase())} mono uppercase />
+                </div>
+                <button onClick={() => setSetupCode(genCode())} style={{ background: "#232A36", border: "1px solid #2A3140", borderRadius: 8, padding: "0 12px", color: "#C9D0DB", fontSize: 12 }}>
+                  gerar
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "#5A6472", marginTop: 6 }}>Guarde esse código — é como você vai entrar da próxima vez.</div>
+            </Field>
+            <button
+              disabled={!setupName.trim() || !setupCode.trim()}
+              onClick={() => onCreateOwner(setupName.trim(), setupCode.trim())}
+              style={{ width: "100%", background: setupName.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
+            >
+              Criar minha conta
+            </button>
+          </div>
+        ) : (
+          <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <Lock size={16} color="#8A93A3" />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Entrar</div>
+            </div>
+            <Field label="Código de acesso" style={{ marginBottom: 12 }}>
+              <KeyboardField
+                value={code}
+                onChange={(v) => {
+                  setCode(v);
+                  setMsg("");
+                }}
+                placeholder="Ex: 7K2QXZ"
+                mono
+                uppercase
+              />
+            </Field>
+            {msg && <div style={{ fontSize: 12.5, color: "#E85D4E", marginBottom: 12 }}>{msg}</div>}
+            <button onClick={tryLogin} disabled={!code.trim()} style={{ width: "100%", background: code.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+              Entrar
+            </button>
+            <button onClick={onForgotCode} style={{ width: "100%", background: "none", border: "none", color: "#8A93A3", fontSize: 12.5, marginTop: 14, textAlign: "center" }}>
+              Esqueci meu código
+            </button>
+            <div style={{ fontSize: 11.5, color: "#5A6472", marginTop: 6, textAlign: "center" }}>Ou peça diretamente ao responsável pela equipe.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecoveryScreen({ accounts, requests, persistRequests, onBack }) {
+  const [selectedId, setSelectedId] = useState("");
+  const [sent, setSent] = useState(false);
+  const active = accounts.filter((a) => !a.bloqueado);
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+  const myPending = selectedId ? requests.find((r) => r.contaId === selectedId && r.status === "pendente") : null;
+  const myLastResolved = selectedId
+    ? requests.filter((r) => r.contaId === selectedId && r.status !== "pendente").sort((a, b) => (b.resolvidoEm || b.criadoEm) - (a.resolvidoEm || a.criadoEm))[0]
+    : null;
+
+  const cooldownUntil = myLastResolved && myLastResolved.status === "negado" ? (myLastResolved.resolvidoEm || 0) + COOLDOWN_MS : 0;
+  const inCooldown = cooldownUntil > Date.now();
+  const cooldownRemaining = inCooldown ? cooldownUntil - Date.now() : 0;
+  const cooldownLabel = inCooldown
+    ? (() => {
+        const h = Math.floor(cooldownRemaining / 3600000);
+        const m = Math.floor((cooldownRemaining % 3600000) / 60000);
+        return h > 0 ? `${h}h ${m}min` : `${m}min`;
+      })()
+    : "";
+
+  function submit() {
+    if (!selectedId || myPending || inCooldown) return;
+    const acc = accounts.find((a) => a.id === selectedId);
+    const req = { id: uid(), contaId: selectedId, nome: acc.nome, status: "pendente", criadoEm: Date.now() };
+    persistRequests([...requests, req]);
+    setSent(true);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A93A3", fontSize: 13, padding: "0 0 18px", marginLeft: -2 }}>
+          <ChevronLeft size={16} /> Voltar
+        </button>
+
+        <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <KeyRound size={16} color="#F2B705" />
+            <div style={{ fontSize: 14, fontWeight: 700 }}>Recuperar código</div>
+          </div>
+          <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 18 }}>
+            O código não é enviado automaticamente. O dono precisa aprovar e te passar o novo código pessoalmente.
+          </div>
+
+          <Field label="Quem é você?" style={{ marginBottom: 16 }}>
+            <select
+              value={selectedId}
+              onChange={(e) => {
+                setSelectedId(e.target.value);
+                setSent(false);
+              }}
+              style={inputStyle}
+            >
+              <option value="">Selecione seu nome</option>
+              {active.map((a) => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+            </select>
+          </Field>
+
+          {selectedId && myPending && (
+            <div style={{ background: "#F2B70518", border: "1px solid #F2B70544", color: "#F2B705", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+              Já existe uma solicitação pendente pra você. Aguarde o dono aprovar e te passar o novo código.
+            </div>
+          )}
+
+          {selectedId && !myPending && inCooldown && (
+            <div style={{ background: "#E85D4E18", border: "1px solid #E85D4E44", color: "#F5A99E", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+              Seu último pedido foi negado. Você pode solicitar de novo em {cooldownLabel}.
+            </div>
+          )}
+
+          {selectedId && !myPending && !inCooldown && myLastResolved && myLastResolved.status === "aprovado" && (
+            <div style={{ background: "#2DD4BF18", border: "1px solid #2DD4BF44", color: "#2DD4BF", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+              Sua última solicitação foi aprovada. Confira o novo código com o dono, se ainda não recebeu.
+            </div>
+          )}
+
+          {sent && !myPending ? null : (
+            <button
+              onClick={submit}
+              disabled={!selectedId || !!myPending || inCooldown}
+              style={{ width: "100%", background: selectedId && !myPending && !inCooldown ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
+            >
+              Enviar solicitação ao dono
+            </button>
+          )}
+
+          {sent && (
+            <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 12, textAlign: "center" }}>
+              Solicitação enviada. Fale com o dono quando ele aprovar.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persistJobs, requests, persistRequests, removedAccounts, persistRemovedAccounts, error, initialShowAdmin, onAdminOpened, restrictedMsg, onDismissRestricted }) {
+  const isOwner = currentUser.papel === "dono";
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [filterPerson, setFilterPerson] = useState("Todos");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    if (initialShowAdmin) {
+      setShowAdmin(true);
+      onAdminOpened && onAdminOpened();
+    }
+  }, [initialShowAdmin]);
+
+  const activeAccounts = accounts.filter((a) => !a.bloqueado);
+
+  const emptyForm = {
+    cliente: "",
+    telefone: "",
+    endereco: "",
+    servico: "",
+    data: fmtDateKey(new Date()),
+    hora: "09:00",
+    responsavelId: currentUser.id,
+    status: "agendado",
+    valor: "",
+    obs: "",
+  };
+  const [form, setForm] = useState(emptyForm);
+
+  function accountName(id) {
+    const a = accounts.find((x) => x.id === id);
+    return a ? a.nome : "—";
+  }
+
+  function canEdit(job) {
+    return isOwner || job.responsavelId === currentUser.id;
+  }
+
+  function openNew(dateKey) {
+    setForm({ ...emptyForm, data: dateKey || fmtDateKey(new Date()) });
+    setEditingId(null);
+    setShowForm(true);
+  }
+  function openView(job) {
+    if (!canEdit(job)) return;
+    setForm(job);
+    setEditingId(job.id);
+    setShowForm(true);
+  }
+  function saveForm() {
+    if (!form.cliente.trim() || !form.data) return;
+    if (editingId) {
+      persistJobs(jobs.map((j) => (j.id === editingId ? { ...form, id: editingId } : j)));
+    } else {
+      persistJobs([...jobs, { ...form, id: uid() }]);
+    }
+    setShowForm(false);
+  }
+  function removeJob(id) {
+    persistJobs(jobs.filter((j) => j.id !== id));
+  }
+  function cycleStatus(job) {
+    if (!canEdit(job)) return;
+    const idx = STATUS_ORDER.indexOf(job.status);
+    const next = STATUS_ORDER[(idx + 1) % STATUS_ORDER.length];
+    persistJobs(jobs.map((j) => (j.id === job.id ? { ...j, status: next } : j)));
+  }
+
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day + weekOffset * 7);
+    return d;
+  }, [weekOffset]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return fmtDateKey(d);
+  }), [weekStart]);
+
+  const filteredJobs = useMemo(() => jobs.filter((j) => filterPerson === "Todos" || j.responsavelId === filterPerson), [jobs, filterPerson]);
+  const jobsByDay = useMemo(() => {
+    const map = {};
+    for (const key of weekDays) map[key] = [];
+    for (const j of filteredJobs) if (map[j.data]) map[j.data].push(j);
+    for (const key of weekDays) map[key].sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+    return map;
+  }, [filteredJobs, weekDays]);
+
+  const weekTotal = useMemo(() => weekDays.reduce((sum, key) => sum + (jobsByDay[key] || []).reduce((s, j) => s + (parseFloat(j.valor) || 0), 0), 0), [jobsByDay, weekDays]);
+  const weekLabel = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 6);
+    const fmt = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+    return `${fmt(weekStart)} – ${fmt(end)}`;
+  }, [weekStart]);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>
+      <style>{`
+        * { box-sizing: border-box; }
+        input, select, textarea { font-family: inherit; }
+        button { cursor: pointer; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #2A3140; border-radius: 4px; }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+      `}</style>
+
+      <header style={{ padding: "20px 20px 16px", borderBottom: "1px solid #262D3A", position: "sticky", top: 0, background: "#14181Fee", backdropFilter: "blur(8px)", zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px #F2B70544" }}>
+              <Zap size={20} color="#14181F" fill="#14181F" />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>Painel de Serviços</div>
+              <div style={{ fontSize: 11.5, color: "#8A93A3", letterSpacing: "0.02em" }}>
+                {currentUser.nome.toUpperCase()} {isOwner && "· DONO"}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {isOwner && (
+              <button onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
+                <Users size={15} /> Contas
+                {requests.filter((r) => r.status === "pendente").length > 0 && (
+                  <span style={{ position: "absolute", top: -5, right: -5, background: "#E85D4E", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                    {requests.filter((r) => r.status === "pendente").length}
+                  </span>
+                )}
+              </button>
+            )}
+            <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", padding: "8px 10px", borderRadius: 8, fontSize: 13 }}>
+              <LogOut size={15} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main style={{ maxWidth: 960, margin: "0 auto", padding: "20px 20px 100px" }}>
+        {error && (
+          <div style={{ background: "#E85D4E22", border: "1px solid #E85D4E55", color: "#F5A99E", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>
+        )}
+        {restrictedMsg && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#F2B70518", border: "1px solid #F2B70544", color: "#F2B705", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+            <span>Gerenciamento de contas é uma área restrita ao dono. Você entrou no app normalmente.</span>
+            <button onClick={onDismissRestricted} style={{ background: "none", border: "none", color: "#F2B705", flexShrink: 0 }}><X size={15} /></button>
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setWeekOffset((w) => w - 1)} style={{ background: "#1E242E", border: "1px solid #2A3140", borderRadius: 8, padding: 8, color: "#C9D0DB" }}>
+              <ChevronLeft size={16} />
+            </button>
+            <div style={{ fontSize: 14, fontWeight: 600, minWidth: 130, textAlign: "center" }}>{weekLabel}</div>
+            <button onClick={() => setWeekOffset((w) => w + 1)} style={{ background: "#1E242E", border: "1px solid #2A3140", borderRadius: 8, padding: 8, color: "#C9D0DB" }}>
+              <ChevronRight size={16} />
+            </button>
+            {weekOffset !== 0 && (
+              <button onClick={() => setWeekOffset(0)} style={{ fontSize: 12, color: "#F2B705", background: "none", border: "none", marginLeft: 4 }}>
+                hoje
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {isOwner && weekTotal > 0 && (
+              <div style={{ fontSize: 13, color: "#2DD4BF", fontWeight: 700, background: "#2DD4BF15", border: "1px solid #2DD4BF33", borderRadius: 8, padding: "7px 12px" }}>
+                {fmtBRL(weekTotal)}
+              </div>
+            )}
+            <select value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)} style={{ background: "#1E242E", border: "1px solid #2A3140", color: "#F5F6F7", borderRadius: 8, padding: "8px 10px", fontSize: 13 }}>
+              <option value="Todos">Todos</option>
+              {activeAccounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {weekDays.map((dayKey) => {
+            const dayJobs = jobsByDay[dayKey];
+            const isToday = dayKey === fmtDateKey(new Date());
+            return (
+              <div key={dayKey} style={{ background: "#1A202B", border: isToday ? "1px solid #F2B70566" : "1px solid #232A36", borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: dayJobs.length ? "1px solid #232A36" : "none" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: isToday ? "#F2B705" : "#C9D0DB", letterSpacing: "0.02em", textTransform: "uppercase" }}>
+                    {fmtDateLabel(dayKey)} {isToday && "· hoje"}
+                  </div>
+                  <button onClick={() => openNew(dayKey)} style={{ background: "none", border: "none", color: "#8A93A3", display: "flex", alignItems: "center", padding: 4 }}>
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {dayJobs.length > 0 && (
+                  <div>
+                    {dayJobs.map((job) => {
+                      const st = STATUS[job.status] || STATUS.agendado;
+                      const editable = canEdit(job);
+                      return (
+                        <div key={job.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderBottom: "1px solid #1F2530", opacity: editable ? 1 : 0.85 }}>
+                          <button
+                            onClick={() => cycleStatus(job)}
+                            title={st.label}
+                            disabled={!editable}
+                            style={{ flexShrink: 0, width: 14, height: 14, borderRadius: "50%", background: st.color, border: "2px solid #10141B", boxShadow: st.glow, cursor: editable ? "pointer" : "default" }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0, cursor: editable ? "pointer" : "default" }} onClick={() => openView(job)}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 14, fontWeight: 600 }}>{job.cliente}</span>
+                              <span style={{ fontSize: 12, color: "#8A93A3" }}>{job.servico}</span>
+                            </div>
+                            <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
+                              {job.hora && <span style={{ fontSize: 11.5, color: "#8A93A3", display: "flex", alignItems: "center", gap: 4 }}><Clock size={11} /> {job.hora}</span>}
+                              {job.endereco && <span style={{ fontSize: 11.5, color: "#8A93A3", display: "flex", alignItems: "center", gap: 4 }}><MapPin size={11} /> {job.endereco}</span>}
+                              <span style={{ fontSize: 11.5, color: "#8A93A3", display: "flex", alignItems: "center", gap: 4 }}><User size={11} /> {accountName(job.responsavelId)}</span>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+                            <span style={{ fontSize: 10.5, color: st.color, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase" }}>{st.label}</span>
+                            {isOwner && fmtBRL(job.valor) && <span style={{ fontSize: 12.5, color: "#C9D0DB", fontWeight: 600 }}>{fmtBRL(job.valor)}</span>}
+                          </div>
+                          {editable && (
+                            <button onClick={() => removeJob(job.id)} style={{ background: "none", border: "none", color: "#5A6472", padding: 4, flexShrink: 0 }}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </main>
+
+      <button
+        onClick={() => openNew(fmtDateKey(new Date()))}
+        style={{ position: "fixed", bottom: 24, right: 24, width: 54, height: 54, borderRadius: "50%", background: "#F2B705", border: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px #F2B70566" }}
+      >
+        <Plus size={24} color="#14181F" strokeWidth={2.5} />
+      </button>
+
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={() => setShowForm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", border: "1px solid #262D3A", borderBottom: "none" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{editingId ? "Editar serviço" : "Novo serviço"}</div>
+              <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
+            </div>
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <Field label="Cliente"><KeyboardField value={form.cliente} onChange={(v) => setForm({ ...form, cliente: v })} placeholder="Nome do cliente" /></Field>
+              <Field label="Telefone"><KeyboardField value={form.telefone} onChange={(v) => setForm({ ...form, telefone: v })} placeholder="(27) 9xxxx-xxxx" /></Field>
+              <Field label="Endereço"><KeyboardField value={form.endereco} onChange={(v) => setForm({ ...form, endereco: v })} placeholder="Rua, bairro" /></Field>
+              <Field label="Serviço"><KeyboardField value={form.servico} onChange={(v) => setForm({ ...form, servico: v })} placeholder="Ex: troca de disjuntor" /></Field>
+              <div style={{ display: "flex", gap: 12 }}>
+                <Field label="Data" style={{ flex: 1 }}><input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} style={inputStyle} /></Field>
+                <Field label="Hora" style={{ flex: 1 }}><input type="time" value={form.hora} onChange={(e) => setForm({ ...form, hora: e.target.value })} style={inputStyle} /></Field>
+              </div>
+              {isOwner && (
+                <Field label="Valor cobrado (R$)">
+                  <KeyboardField value={form.valor} onChange={(v) => setForm({ ...form, valor: v })} placeholder="0,00" numeric />
+                </Field>
+              )}
+              <div style={{ display: "flex", gap: 12 }}>
+                <Field label="Responsável" style={{ flex: 1 }}>
+                  <select value={form.responsavelId} onChange={(e) => setForm({ ...form, responsavelId: e.target.value })} disabled={!isOwner} style={inputStyle}>
+                    {activeAccounts.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                  </select>
+                </Field>
+                <Field label="Status" style={{ flex: 1 }}>
+                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} style={inputStyle}>
+                    {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS[s].label}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Observações"><KeyboardField value={form.obs} onChange={(v) => setForm({ ...form, obs: v })} multiline /></Field>
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                {editingId && (
+                  <button onClick={() => { removeJob(editingId); setShowForm(false); }} style={{ background: "#1E242E", border: "1px solid #E85D4E55", color: "#E85D4E", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 600 }}>
+                    Excluir
+                  </button>
+                )}
+                <button
+                  onClick={saveForm}
+                  disabled={!form.cliente.trim()}
+                  style={{ flex: 1, background: form.cliente.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                >
+                  <Check size={16} /> {editingId ? "Salvar alterações" : "Adicionar serviço"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdmin && isOwner && (
+        <AdminPanel accounts={accounts} persistAccounts={persistAccounts} requests={requests} persistRequests={persistRequests} removedAccounts={removedAccounts} persistRemovedAccounts={persistRemovedAccounts} currentUser={currentUser} onClose={() => setShowAdmin(false)} />
+      )}
+    </div>
+  );
+}
+
+function AdminPanel({ accounts, persistAccounts, requests, persistRequests, removedAccounts, persistRemovedAccounts, currentUser, onClose }) {
+  const [newName, setNewName] = useState("");
+  const [newCode, setNewCode] = useState(genCode());
+  const [revealed, setRevealed] = useState({});
+  const [newCodes, setNewCodes] = useState({}); // per-request draft code
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const pending = requests.filter((r) => r.status === "pendente");
+  const DENIED_ALERT_THRESHOLD = 3;
+  const deniedCounts = {};
+  for (const r of requests) {
+    if (r.status === "negado") deniedCounts[r.contaId] = (deniedCounts[r.contaId] || 0) + 1;
+  }
+  const flagged = Object.entries(deniedCounts).filter(([, count]) => count >= DENIED_ALERT_THRESHOLD);
+
+  function addAccount() {
+    const name = newName.trim();
+    if (!name) return;
+    const acc = { id: uid(), nome: name, codigo: newCode, papel: "ajudante", bloqueado: false };
+    persistAccounts([...accounts, acc]);
+    setNewName("");
+    setNewCode(genCode());
+  }
+  function toggleBlock(id) {
+    persistAccounts(accounts.map((a) => (a.id === id ? { ...a, bloqueado: !a.bloqueado } : a)));
+  }
+  function removeAccount(acc) {
+    persistRemovedAccounts([...removedAccounts, { nome: acc.nome, codigo: acc.codigo, removidoEm: Date.now() }]);
+    persistAccounts(accounts.filter((a) => a.id !== acc.id));
+    setConfirmDeleteId(null);
+  }
+  function approveRequest(req) {
+    const code = (newCodes[req.id] || genCode()).toUpperCase();
+    persistAccounts(accounts.map((a) => (a.id === req.contaId ? { ...a, codigo: code } : a)));
+    persistRequests(requests.map((r) => (r.id === req.id ? { ...r, status: "aprovado", novoCodigo: code, resolvidoEm: Date.now() } : r)));
+    setRevealed((r) => ({ ...r, [req.contaId]: true }));
+  }
+  function denyRequest(req) {
+    persistRequests(requests.map((r) => (r.id === req.id ? { ...r, status: "negado", resolvidoEm: Date.now() } : r)));
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: 14, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", border: "1px solid #262D3A" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}><ShieldCheck size={17} color="#F2B705" /> Contas da equipe</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          {flagged.length > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#E85D4E", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Ban size={13} /> Possível abuso
+              </div>
+              {flagged.map(([contaId, count]) => {
+                const acc = accounts.find((a) => a.id === contaId);
+                if (!acc) return null;
+                return (
+                  <div key={contaId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#E85D4E12", border: "1px solid #E85D4E44", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                    <div style={{ fontSize: 12.5, color: "#F5A99E" }}>
+                      <strong>{acc.nome}</strong> já teve {count} pedidos de código negados. Considere bloquear a conta.
+                    </div>
+                    <button
+                      onClick={() => toggleBlock(acc.id)}
+                      style={{ flexShrink: 0, background: "#E85D4E", border: "none", color: "#fff", borderRadius: 7, padding: "7px 10px", fontSize: 12, fontWeight: 700 }}
+                    >
+                      Bloquear
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {pending.length > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#F2B705", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <KeyRound size={13} /> Solicitações de recuperação
+              </div>
+              {pending.map((req) => (
+                <div key={req.id} style={{ background: "#F2B70512", border: "1px solid #F2B70533", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>{req.nome} pediu um novo código</div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <KeyboardField value={newCodes[req.id] ?? genCode()} onChange={(v) => setNewCodes((c) => ({ ...c, [req.id]: v.toUpperCase() }))} mono uppercase />
+                    </div>
+                    <button onClick={() => setNewCodes((c) => ({ ...c, [req.id]: genCode() }))} style={{ background: "#232A36", border: "1px solid #2A3140", borderRadius: 8, padding: "0 12px", color: "#C9D0DB", fontSize: 12 }}>
+                      gerar
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => denyRequest(req)} style={{ flex: 1, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 600 }}>
+                      Negar
+                    </button>
+                    <button onClick={() => approveRequest(req)} style={{ flex: 2, background: "#F2B705", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
+                      Aprovar e gerar código
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#5A6472", marginTop: 8 }}>Depois de aprovar, passe o novo código pra pessoa pessoalmente.</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {accounts.map((a) => (
+            <div key={a.id} style={{ padding: "12px 0", borderBottom: "1px solid #1F2530" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+                    {a.nome}
+                    {a.papel === "dono" && <span style={{ fontSize: 10, color: "#F2B705", border: "1px solid #F2B70555", borderRadius: 5, padding: "1px 6px" }}>DONO</span>}
+                    {a.bloqueado && <span style={{ fontSize: 10, color: "#E85D4E", border: "1px solid #E85D4E55", borderRadius: 5, padding: "1px 6px" }}>BLOQUEADO</span>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                    <KeyRound size={11} color="#5A6472" />
+                    <span style={{ fontSize: 12, color: "#8A93A3", fontFamily: "monospace", letterSpacing: 1 }}>
+                      {revealed[a.id] ? a.codigo : "••••••"}
+                    </span>
+                    <button onClick={() => setRevealed((r) => ({ ...r, [a.id]: !r[a.id] }))} style={{ background: "none", border: "none", color: "#5A6472", padding: 2 }}>
+                      {revealed[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  </div>
+                </div>
+                {a.id !== currentUser.id && (
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => toggleBlock(a.id)}
+                      title={a.bloqueado ? "Desbloquear" : "Bloquear"}
+                      style={{ background: "#1E242E", border: "1px solid #2A3140", borderRadius: 7, padding: 7, color: a.bloqueado ? "#2DD4BF" : "#E85D4E" }}
+                    >
+                      <Ban size={14} />
+                    </button>
+                    <button onClick={() => setConfirmDeleteId(a.id)} title="Excluir" style={{ background: "#1E242E", border: "1px solid #2A3140", borderRadius: 7, padding: 7, color: "#5A6472" }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {confirmDeleteId === a.id && (
+                <div style={{ marginTop: 10, background: "#E85D4E12", border: "1px solid #E85D4E44", borderRadius: 9, padding: 12 }}>
+                  <div style={{ fontSize: 12.5, color: "#F5A99E", marginBottom: 10 }}>
+                    Excluir a conta de <strong>{a.nome}</strong>? O código atual dela deixa de funcionar e não dá pra desfazer.
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, fontWeight: 600 }}>
+                      Cancelar
+                    </button>
+                    <button onClick={() => removeAccount(a)} style={{ flex: 1, background: "#E85D4E", border: "none", color: "#fff", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, fontWeight: 700 }}>
+                      Confirmar exclusão
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div style={{ marginTop: 18, paddingTop: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#8A93A3", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 10 }}>Nova conta</div>
+            <Field label="Nome do ajudante" style={{ marginBottom: 10 }}>
+              <KeyboardField value={newName} onChange={setNewName} placeholder="Ex: João" />
+            </Field>
+            <Field label="Código de acesso" style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <KeyboardField value={newCode} onChange={(v) => setNewCode(v.toUpperCase())} mono uppercase />
+                </div>
+                <button onClick={() => setNewCode(genCode())} style={{ background: "#232A36", border: "1px solid #2A3140", borderRadius: 8, padding: "0 12px", color: "#C9D0DB", fontSize: 12 }}>gerar</button>
+              </div>
+              <div style={{ fontSize: 11, color: "#5A6472", marginTop: 6 }}>Repasse esse código pro ajudante entrar no app.</div>
+            </Field>
+            <button onClick={addAccount} disabled={!newName.trim()} style={{ width: "100%", background: newName.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+              Criar conta
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
