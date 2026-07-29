@@ -2,12 +2,12 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY_AQUI",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "SEU_SENDER_ID",
-  appId: "SEU_APP_ID",
+  apiKey: "AIzaSyDv_gG0zZjSv67ln4ptTzmFetx5dm1lds8",
+  authDomain: "asx-eletricista.firebaseapp.com",
+  projectId: "asx-eletricista",
+  storageBucket: "asx-eletricista.firebasestorage.app",
+  messagingSenderId: "198949142258",
+  appId: "1:198949142258:web:879b0a78bd4b6cf2d41a6b",
 };
 
 const app = initializeApp(firebaseConfig);
