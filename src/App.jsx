@@ -846,7 +846,6 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {isOwner && (
-              {isOwner && (
               <button onClick={() => setShowPedidos(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
                 <ClipboardList size={15} /> Pedidos
                 {pedidosPendentes.length > 0 && (
@@ -856,6 +855,7 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
                 )}
               </button>
             )}
+            {isOwner && (
             <button onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
                 <Users size={15} /> Contas
                 {requests.filter((r) => r.status === "pendente").length > 0 && (
