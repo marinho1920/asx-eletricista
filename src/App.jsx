@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
-import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound } from "lucide-react";
-import { storageGet, storageSet } from "./firebase.js";
+import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound, ClipboardList } from "lucide-react";
+import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido } from "./firebase.js";
 
 const STATUS = {
   agendado: { label: "Agendado", color: "#8A93A3", glow: "none" },
@@ -700,6 +700,14 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
   const [filterPerson, setFilterPerson] = useState("Todos");
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showPedidos, setShowPedidos] = useState(false);
+  const [pedidosPendentes, setPedidosPendentes] = useState([]);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    const unsub = ouvirPedidosPendentes(setPedidosPendentes);
+    return () => unsub && unsub();
+  }, [isOwner]);
 
   useEffect(() => {
     if (initialShowAdmin) {
@@ -755,6 +763,25 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
   }
   function removeJob(id) {
     persistJobs(jobs.filter((j) => j.id !== id));
+  }
+  async function aceitarPedido(pedido) {
+    const novoServico = {
+      cliente: pedido.nome,
+      telefone: pedido.telefone,
+      endereco: pedido.endereco,
+      servico: pedido.servico,
+      data: pedido.data,
+      hora: pedido.hora,
+      responsavelId: currentUser.id,
+      status: "agendado",
+      valor: "",
+      obs: "Pedido feito pelo cliente via site de orcamento",
+    };
+    await persistJobs([...jobs, { ...novoServico, id: uid() }]);
+    await atualizarStatusPedido(pedido.id, "aceito");
+  }
+  async function recusarPedido(pedido) {
+    await atualizarStatusPedido(pedido.id, "recusado");
   }
   function cycleStatus(job) {
     if (!canEdit(job)) return;
@@ -819,7 +846,17 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {isOwner && (
-              <button onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
+              {isOwner && (
+              <button onClick={() => setShowPedidos(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
+                <ClipboardList size={15} /> Pedidos
+                {pedidosPendentes.length > 0 && (
+                  <span style={{ position: "absolute", top: -5, right: -5, background: "#E85D4E", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                    {pedidosPendentes.length}
+                  </span>
+                )}
+              </button>
+            )}
+            <button onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
                 <Users size={15} /> Contas
                 {requests.filter((r) => r.status === "pendente").length > 0 && (
                   <span style={{ position: "absolute", top: -5, right: -5, background: "#E85D4E", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
@@ -992,6 +1029,10 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
             </div>
           </div>
         </div>
+      )}
+
+      {showPedidos && isOwner && (
+        <PedidosPanel pedidos={pedidosPendentes} onAceitar={aceitarPedido} onRecusar={recusarPedido} onClose={() => setShowPedidos(false)} />
       )}
 
       {showAdmin && isOwner && (
@@ -1176,6 +1217,44 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
               Criar conta
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: 14, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", border: "1px solid #262D3A" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
+            <ClipboardList size={17} color="#F2B705" /> Pedidos de clientes
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
+        </div>
+        <div style={{ padding: 20 }}>
+          {pedidos.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#8A93A3" }}>Nenhum pedido novo no momento.</div>
+          ) : (
+            pedidos.map((p) => (
+              <div key={p.id} style={{ background: "#F2B70512", border: "1px solid #F2B70533", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{p.nome}</div>
+                <div style={{ fontSize: 12.5, color: "#C9D0DB", marginBottom: 2 }}>{p.servico}</div>
+                <div style={{ fontSize: 12, color: "#8A93A3", marginBottom: 2 }}>{p.endereco}</div>
+                <div style={{ fontSize: 12, color: "#8A93A3", marginBottom: 2 }}>{p.telefone}</div>
+                <div style={{ fontSize: 12, color: "#8A93A3", marginBottom: 10 }}>{p.data} as {p.hora}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => onRecusar(p)} style={{ flex: 1, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 600 }}>
+                    Recusar
+                  </button>
+                  <button onClick={() => onAceitar(p)} style={{ flex: 2, background: "#F2B705", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
+                    Aceitar e agendar
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
