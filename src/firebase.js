@@ -57,24 +57,3 @@ export async function atualizarStatusPedido(id, status) {
     return false;
   }
 }
-
-import { collection, addDoc, updateDoc, query, where, onSnapshot } from "firebase/firestore";
-
-export function ouvirPedidosPendentes(callback) {
-  const q = query(collection(db, "pedidos-clientes"), where("status", "==", "pendente"));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  }, (e) => {
-    console.error("Erro ao ouvir pedidos:", e);
-  });
-}
-
-export async function atualizarStatusPedido(id, status) {
-  try {
-    await updateDoc(doc(db, "pedidos-clientes", id), { status });
-    return true;
-  } catch (e) {
-    console.error("Erro ao atualizar pedido:", e);
-    return false;
-  }
-}
