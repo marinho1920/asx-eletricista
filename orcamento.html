@@ -3,13 +3,33 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Solicitar orçamento - Eletricista Residencial</title>
+<title>Xandyy Eletricista - Solicitar orçamento</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #14181F; color: #F5F6F7; font-family: -apple-system, system-ui, sans-serif; padding: 24px 16px; }
-  .card { max-width: 420px; margin: 0 auto; background: #1A202B; border: 1px solid #262D3A; border-radius: 14px; padding: 24px; }
-  h1 { font-size: 19px; margin: 0 0 4px; }
-  p.sub { color: #8A93A3; font-size: 13px; margin: 0 0 20px; }
+  body { margin: 0; background: #14181F; color: #F5F6F7; font-family: -apple-system, system-ui, sans-serif; }
+  .wrap { max-width: 460px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  .header { text-align: center; margin-bottom: 22px; }
+  .logo { width: 56px; height: 56px; border-radius: 13px; background: linear-gradient(160deg, #F2B705, #C9950A); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 12px; box-shadow: 0 0 24px rgba(242,183,5,0.35); }
+  .header h1 { font-size: 20px; margin: 0 0 4px; }
+  .header p { color: #8A93A3; font-size: 12.5px; margin: 0; letter-spacing: 0.02em; }
+
+  .quick-links { display: flex; gap: 8px; margin: 18px 0; }
+  .quick-links a { flex: 1; text-align: center; text-decoration: none; font-size: 13px; font-weight: 700; padding: 11px 10px; border-radius: 10px; }
+  .wa { background: #25D366; color: #0b1a10; }
+  .ig { background: #1E242E; color: #F5F6F7; border: 1px solid #2A3140; }
+
+  .info-card { background: #1A202B; border: 1px solid #262D3A; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .info-row { display: flex; gap: 10px; font-size: 13px; color: #C9D0DB; margin-bottom: 8px; }
+  .info-row:last-child { margin-bottom: 0; }
+  .info-row b { color: #F5F6F7; }
+
+  .services { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 22px; }
+  .chip { background: #F2B70515; border: 1px solid #F2B70544; color: #F2B705; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 20px; }
+
+  .card { background: #1A202B; border: 1px solid #262D3A; border-radius: 14px; padding: 22px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card p.sub { color: #8A93A3; font-size: 12.5px; margin: 0 0 20px; }
   label { display: block; font-size: 11.5px; color: #8A93A3; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.03em; }
   input, textarea { width: 100%; background: #12161D; border: 1px solid #2A3140; color: #F5F6F7; border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-bottom: 14px; font-family: inherit; }
   button { width: 100%; background: #F2B705; border: none; color: #14181F; border-radius: 10px; padding: 13px 16px; font-size: 15px; font-weight: 700; cursor: pointer; }
@@ -17,28 +37,58 @@
   #msg { font-size: 13px; margin-top: 14px; text-align: center; }
   #msg.ok { color: #2DD4BF; }
   #msg.err { color: #E85D4E; }
+
+  .footer-note { text-align: center; font-size: 11.5px; color: #5A6472; margin-top: 20px; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>⚡ Solicitar orçamento</h1>
-    <p class="sub">Preencha os dados e retornaremos para confirmar o atendimento.</p>
-    <form id="form">
-      <label>Nome</label>
-      <input id="nome" required />
-      <label>Telefone</label>
-      <input id="telefone" required placeholder="(27) 9xxxx-xxxx" />
-      <label>Endereço</label>
-      <input id="endereco" required />
-      <label>Serviço desejado</label>
-      <textarea id="servico" required rows="3" placeholder="Ex: troca de disjuntor, instalação de tomadas..."></textarea>
-      <label>Data desejada</label>
-      <input id="data" type="date" required />
-      <label>Horário desejado</label>
-      <input id="hora" type="time" required />
-      <button id="btn" type="submit">Enviar pedido</button>
-    </form>
-    <div id="msg"></div>
+  <div class="wrap">
+    <div class="header">
+      <div class="logo">⚡</div>
+      <h1>Xandyy Eletricista</h1>
+      <p>ELETRICISTA RESIDENCIAL · GRANDE VITÓRIA-ES</p>
+    </div>
+
+    <div class="quick-links">
+      <a class="wa" href="https://wa.me/5527997031441" target="_blank">💬 Chamar no WhatsApp</a>
+      <a class="ig" href="https://instagram.com/xandyy_oficial" target="_blank">📷 Instagram</a>
+    </div>
+
+    <div class="info-card">
+      <div class="info-row">🕒 <span><b>Atendimento:</b> seg-sáb, 8h às 18h</span></div>
+      <div class="info-row">🚨 <span><b>Emergência:</b> 24h por dia</span></div>
+      <div class="info-row">📍 <span><b>Região:</b> Grande Vitória-ES</span></div>
+    </div>
+
+    <div class="services">
+      <span class="chip">Instalações residenciais</span>
+      <span class="chip">Quadro de disjuntores</span>
+      <span class="chip">Manutenção elétrica</span>
+      <span class="chip">Emergência 24h</span>
+    </div>
+
+    <div class="card">
+      <h2>Solicitar orçamento</h2>
+      <p class="sub">Preencha os dados abaixo — normalmente respondemos em até algumas horas.</p>
+      <form id="form">
+        <label>Nome</label>
+        <input id="nome" required />
+        <label>Telefone</label>
+        <input id="telefone" required placeholder="(27) 9xxxx-xxxx" />
+        <label>Endereço</label>
+        <input id="endereco" required />
+        <label>Serviço desejado</label>
+        <textarea id="servico" required rows="3" placeholder="Ex: troca de disjuntor, instalação de tomadas..."></textarea>
+        <label>Data desejada</label>
+        <input id="data" type="date" required />
+        <label>Horário desejado</label>
+        <input id="hora" type="time" required />
+        <button id="btn" type="submit">Enviar pedido</button>
+      </form>
+      <div id="msg"></div>
+    </div>
+
+    <div class="footer-note">Prefere falar direto? Chama no WhatsApp lá em cima ☝️</div>
   </div>
 
 <script type="module">
