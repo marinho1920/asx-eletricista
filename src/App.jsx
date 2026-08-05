@@ -917,10 +917,10 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {isOwner && (
-              <button onClick={() => setShowPedidos(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
-                <ClipboardList size={15} /> Pedidos
+              <button title="Pedidos" onClick={() => setShowPedidos(true)} style={{ position: "relative", display: "flex", alignItems: "center", background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 10px", borderRadius: 8, fontSize: 13 }}>
+                <ClipboardList size={15} />
                 {pedidosPendentes.length > 0 && (
                   <span style={{ position: "absolute", top: -5, right: -5, background: "#E85D4E", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
                     {pedidosPendentes.length}
@@ -929,8 +929,8 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
               </button>
             )}
             {isOwner && (
-            <button onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 12px", borderRadius: 8, fontSize: 13 }}>
-                <Users size={15} /> Contas
+            <button title="Contas" onClick={() => setShowAdmin(true)} style={{ position: "relative", display: "flex", alignItems: "center", background: "#1E242E", border: "1px solid #2A3140", color: "#C9D0DB", padding: "8px 10px", borderRadius: 8, fontSize: 13 }}>
+                <Users size={15} />
                 {requests.filter((r) => r.status === "pendente").length > 0 && (
                   <span style={{ position: "absolute", top: -5, right: -5, background: "#E85D4E", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
                     {requests.filter((r) => r.status === "pendente").length}
