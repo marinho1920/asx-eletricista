@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
-import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound, ClipboardList } from "lucide-react";
+import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound, ClipboardList, Settings, Palette, Building2, Bell } from "lucide-react";
 import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido } from "./firebase.js";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 const STATUS = {
   agendado: { label: "Agendado", color: "#8A93A3", glow: "none" },
@@ -65,6 +66,20 @@ function KeyboardProvider({ children }) {
   const [tab, setTab] = useState("abc");
   const [shift, setShift] = useState(false);
   const registry = useRef({});
+  const [enabled, setEnabledState] = useState(() => {
+    try {
+      const saved = localStorage.getItem("teclado-proprio");
+      return saved === null ? true : saved === "true";
+    } catch (e) {
+      return true;
+    }
+  });
+  function setEnabled(v) {
+    setEnabledState(v);
+    try {
+      localStorage.setItem("teclado-proprio", v ? "true" : "false");
+    } catch (e) {}
+  }
 
   function registerField(id, entry) {
     registry.current[id] = entry;
@@ -100,7 +115,7 @@ function KeyboardProvider({ children }) {
     insertChar(" ");
   }
 
-  const ctx = { activeId, tab, setTab, shift, setShift, registerField, unregisterField, openField, closeKeyboard, insertChar, backspace, insertSpace };
+  const ctx = { activeId, tab, setTab, shift, setShift, registerField, unregisterField, openField, closeKeyboard, insertChar, backspace, insertSpace, enabled, setEnabled };
 
   return (
     <KeyboardCtx.Provider value={ctx}>
@@ -113,6 +128,29 @@ function KeyboardProvider({ children }) {
 function KeyboardField({ value, onChange, placeholder, style, numeric, mono, uppercase, multiline, maxLength }) {
   const id = useId();
   const ctx = useKeyboardCtx();
+
+  if (ctx.enabled === false) {
+    const Tag = multiline ? "textarea" : "input";
+    return (
+      <Tag
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={multiline ? 3 : undefined}
+        maxLength={maxLength}
+        style={{
+          ...inputStyle,
+          fontFamily: mono ? "monospace" : undefined,
+          letterSpacing: mono ? 2 : undefined,
+          fontWeight: mono ? 700 : undefined,
+          textTransform: uppercase ? "uppercase" : undefined,
+          resize: multiline ? "vertical" : undefined,
+          ...style,
+        }}
+      />
+    );
+  }
+
   ctx.registerField(id, { value: value || "", onChange, numeric, maxLength });
   useEffect(() => () => ctx.unregisterField(id), []); // eslint-disable-line
 
@@ -702,12 +740,47 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPedidos, setShowPedidos] = useState(false);
   const [pedidosPendentes, setPedidosPendentes] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [notificacoesAtivas, setNotificacoesAtivas] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const v = await storageGet("config");
+      if (v) {
+        const cfg = JSON.parse(v);
+        if (typeof cfg.notificacoes === "boolean") setNotificacoesAtivas(cfg.notificacoes);
+      }
+    })();
+  }, []);
+
+  async function persistConfig(partial) {
+    const v = await storageGet("config");
+    const atual = v ? JSON.parse(v) : {};
+    await storageSet("config", JSON.stringify({ ...atual, ...partial }));
+  }
 
   useEffect(() => {
     if (!isOwner) return;
-    const unsub = ouvirPedidosPendentes(setPedidosPendentes);
+    LocalNotifications.requestPermissions().catch(() => {});
+    let prevIds = null;
+    const unsub = ouvirPedidosPendentes((lista) => {
+      if (prevIds !== null && notificacoesAtivas) {
+        const novos = lista.filter((p) => !prevIds.includes(p.id));
+        if (novos.length > 0) {
+          LocalNotifications.schedule({
+            notifications: novos.map((p, i) => ({
+              id: Math.floor(Date.now() / 1000) + i,
+              title: "Novo pedido de orcamento",
+              body: p.nome + " solicitou: " + p.servico,
+            })),
+          }).catch((e) => console.error("Erro ao notificar:", e));
+        }
+      }
+      prevIds = lista.map((p) => p.id);
+      setPedidosPendentes(lista);
+    });
     return () => unsub && unsub();
-  }, [isOwner]);
+  }, [isOwner, notificacoesAtivas]);
 
   useEffect(() => {
     if (initialShowAdmin) {
@@ -865,6 +938,9 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
                 )}
               </button>
             )}
+            <button onClick={() => setShowSettings(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", padding: "8px 10px", borderRadius: 8, fontSize: 13 }}>
+              <Settings size={15} />
+            </button>
             <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", padding: "8px 10px", borderRadius: 8, fontSize: 13 }}>
               <LogOut size={15} />
             </button>
@@ -1037,6 +1113,10 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
 
       {showAdmin && isOwner && (
         <AdminPanel accounts={accounts} persistAccounts={persistAccounts} requests={requests} persistRequests={persistRequests} removedAccounts={removedAccounts} persistRemovedAccounts={persistRemovedAccounts} currentUser={currentUser} onClose={() => setShowAdmin(false)} />
+      )}
+
+      {showSettings && (
+        <SettingsPanel currentUser={currentUser} isOwner={isOwner} onClose={() => setShowSettings(false)} onLogout={onLogout} notificacoesAtivas={notificacoesAtivas} setNotificacoesAtivas={setNotificacoesAtivas} persistConfig={persistConfig} />
       )}
     </div>
   );
@@ -1255,6 +1335,190 @@ function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
               </div>
             ))
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({ icon, label, onClick }) {
+  return (
+    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7", width: "100%" }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#232A36", display: "flex", alignItems: "center", justifyContent: "center", color: "#F2B705", flexShrink: 0 }}>
+        {icon}
+      </div>
+      <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{label}</span>
+    </button>
+  );
+}
+
+function TemaScreen() {
+  const cores = [
+    { nome: "Ambar (padrao)", cor: "#F2B705" },
+    { nome: "Turquesa", cor: "#2DD4BF" },
+    { nome: "Vermelho", cor: "#E85D4E" },
+    { nome: "Azul", cor: "#4E8DE8" },
+  ];
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 16 }}>
+        Personalizacao de tema completa (modo claro, cores) esta em desenvolvimento. Em breve voce vai poder escolher entre essas opcoes:
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {cores.map((c) => (
+          <div key={c.cor} style={{ display: "flex", alignItems: "center", gap: 8, background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.cor }} />
+            <span style={{ fontSize: 12.5 }}>{c.nome}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmpresaScreen() {
+  const [form, setForm] = useState({ nome: "", whatsapp: "", instagram: "", regiao: "", horario: "" });
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const v = await storageGet("empresa");
+      if (v) setForm(JSON.parse(v));
+      setLoading(false);
+    })();
+  }, []);
+
+  async function salvar() {
+    await storageSet("empresa", JSON.stringify(form));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (loading) return <div style={{ fontSize: 13, color: "#8A93A3" }}>Carregando...</div>;
+
+  return (
+    <div>
+      <Field label="Nome do negocio" style={{ marginBottom: 12 }}>
+        <KeyboardField value={form.nome} onChange={(v) => setForm({ ...form, nome: v })} placeholder="Ex: Xandyy Eletricista" />
+      </Field>
+      <Field label="WhatsApp" style={{ marginBottom: 12 }}>
+        <KeyboardField value={form.whatsapp} onChange={(v) => setForm({ ...form, whatsapp: v })} placeholder="(27) 9xxxx-xxxx" />
+      </Field>
+      <Field label="Instagram" style={{ marginBottom: 12 }}>
+        <KeyboardField value={form.instagram} onChange={(v) => setForm({ ...form, instagram: v })} placeholder="@seuusuario" />
+      </Field>
+      <Field label="Regiao atendida" style={{ marginBottom: 12 }}>
+        <KeyboardField value={form.regiao} onChange={(v) => setForm({ ...form, regiao: v })} placeholder="Ex: Grande Vitoria-ES" />
+      </Field>
+      <Field label="Horario de atendimento" style={{ marginBottom: 16 }}>
+        <KeyboardField value={form.horario} onChange={(v) => setForm({ ...form, horario: v })} placeholder="Ex: seg-sab, 8h as 18h" />
+      </Field>
+      <button onClick={salvar} style={{ width: "100%", background: "#F2B705", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+        {saved ? "Salvo!" : "Salvar"}
+      </button>
+    </div>
+  );
+}
+
+function NotificacoesScreen({ ativo, onToggle }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: "14px 16px" }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>Notificar novos pedidos</div>
+        <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 2 }}>So funciona com o app aberto ou recem em segundo plano.</div>
+      </div>
+      <button
+        onClick={() => onToggle(!ativo)}
+        style={{ width: 44, height: 26, borderRadius: 13, background: ativo ? "#F2B705" : "#3A4150", border: "none", position: "relative", flexShrink: 0 }}
+      >
+        <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#14181F", position: "absolute", top: 3, left: ativo ? 21 : 3, transition: "left 0.15s" }} />
+      </button>
+    </div>
+  );
+}
+
+function ContaScreen({ currentUser, isOwner, onLogout }) {
+  return (
+    <div>
+      <div style={{ background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{currentUser.nome}</div>
+        <div style={{ fontSize: 12.5, color: "#8A93A3" }}>{isOwner ? "Dono" : "Ajudante"}</div>
+      </div>
+      <button onClick={onLogout} style={{ width: "100%", background: "#1E242E", border: "1px solid #E85D4E55", color: "#E85D4E", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+        Sair da conta
+      </button>
+    </div>
+  );
+}
+
+function TecladoScreen({ enabled, onChange }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <button
+        onClick={() => onChange(true)}
+        style={{ textAlign: "left", background: enabled ? "#F2B70518" : "#1E242E", border: enabled ? "1px solid #F2B70588" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Teclado do aplicativo {enabled ? "(selecionado)" : ""}</div>
+        <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 2 }}>Teclado proprio dentro do app, com abas de letras, numeros e simbolos.</div>
+      </button>
+      <button
+        onClick={() => onChange(false)}
+        style={{ textAlign: "left", background: !enabled ? "#F2B70518" : "#1E242E", border: !enabled ? "1px solid #F2B70588" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Teclado do celular {!enabled ? "(selecionado)" : ""}</div>
+        <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 2 }}>Usa o teclado nativo do seu aparelho (com autocorretor, emojis, etc).</div>
+      </button>
+    </div>
+  );
+}
+
+function SettingsPanel({ currentUser, isOwner, onClose, onLogout, notificacoesAtivas, setNotificacoesAtivas, persistConfig }) {
+  const [screen, setScreen] = useState("menu");
+  const ctx = useKeyboardCtx();
+
+  const titulos = {
+    menu: "Configuracoes",
+    tema: "Tema",
+    empresa: "Informacoes da empresa",
+    notificacoes: "Notificacoes",
+    conta: "Minha conta",
+    teclado: "Teclado",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: 14, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", border: "1px solid #262D3A" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
+            {screen !== "menu" && (
+              <button onClick={() => setScreen("menu")} style={{ background: "none", border: "none", color: "#8A93A3", padding: 0, display: "flex" }}>
+                <ChevronLeft size={18} />
+              </button>
+            )}
+            <Settings size={17} color="#F2B705" />
+            {titulos[screen]}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          {screen === "menu" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <MenuItem icon={<Palette size={17} />} label="Tema" onClick={() => setScreen("tema")} />
+              {isOwner && <MenuItem icon={<Building2 size={17} />} label="Informacoes da empresa" onClick={() => setScreen("empresa")} />}
+              {isOwner && <MenuItem icon={<Bell size={17} />} label="Notificacoes" onClick={() => setScreen("notificacoes")} />}
+              <MenuItem icon={<User size={17} />} label="Minha conta" onClick={() => setScreen("conta")} />
+              <MenuItem icon={<KeyRound size={17} />} label="Teclado" onClick={() => setScreen("teclado")} />
+            </div>
+          )}
+          {screen === "tema" && <TemaScreen />}
+          {screen === "empresa" && <EmpresaScreen />}
+          {screen === "notificacoes" && (
+            <NotificacoesScreen ativo={notificacoesAtivas} onToggle={(v) => { setNotificacoesAtivas(v); persistConfig({ notificacoes: v }); }} />
+          )}
+          {screen === "conta" && <ContaScreen currentUser={currentUser} isOwner={isOwner} onLogout={onLogout} />}
+          {screen === "teclado" && <TecladoScreen enabled={ctx.enabled} onChange={ctx.setEnabled} />}
         </div>
       </div>
     </div>
