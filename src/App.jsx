@@ -5,7 +5,7 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 
 const STATUS = {
   agendado: { label: "Agendado", color: "#8A93A3", glow: "none" },
-  andamento: { label: "Em andamento", color: "#F2B705", glow: "0 0 10px #F2B70588" },
+  andamento: { label: "Em andamento", color: "var(--accent)", glow: "0 0 10px var(--accent-88)" },
   concluido: { label: "Concluído", color: "#2DD4BF", glow: "0 0 10px #2DD4BF88" },
   urgente: { label: "Urgência", color: "#E85D4E", glow: "0 0 10px #E85D4E88" },
 };
@@ -81,6 +81,29 @@ function KeyboardProvider({ children }) {
     } catch (e) {}
   }
 
+  const THEMES = {
+    ambar: { accent: "var(--accent)", dark: "var(--accent-dark)" },
+    turquesa: { accent: "#2DD4BF", dark: "#17A398" },
+    vermelho: { accent: "#E85D4E", dark: "#B8382B" },
+    azul: { accent: "#4E8DE8", dark: "#2E63B8" },
+  };
+  const [theme, setThemeState] = useState(() => {
+    try {
+      return localStorage.getItem("tema-app") || "ambar";
+    } catch (e) {
+      return "ambar";
+    }
+  });
+  function setTheme(t) {
+    setThemeState(t);
+    try {
+      localStorage.setItem("tema-app", t);
+    } catch (e) {}
+  }
+  const alphasTema = ["12", "18", "33", "44", "55", "66", "88"];
+  const temaAtual = THEMES[theme] || THEMES.ambar;
+  const cssVarsTema = ":root { --accent: " + temaAtual.accent + "; --accent-dark: " + temaAtual.dark + "; " + alphasTema.map((a) => "--accent-" + a + ": " + temaAtual.accent + a + ";").join(" ") + " }";
+
   function registerField(id, entry) {
     registry.current[id] = entry;
   }
@@ -115,10 +138,11 @@ function KeyboardProvider({ children }) {
     insertChar(" ");
   }
 
-  const ctx = { activeId, tab, setTab, shift, setShift, registerField, unregisterField, openField, closeKeyboard, insertChar, backspace, insertSpace, enabled, setEnabled };
+  const ctx = { activeId, tab, setTab, shift, setShift, registerField, unregisterField, openField, closeKeyboard, insertChar, backspace, insertSpace, enabled, setEnabled, theme, setTheme, THEMES };
 
   return (
     <KeyboardCtx.Provider value={ctx}>
+      <style>{cssVarsTema}</style>
       {children}
       <CustomKeyboard />
     </KeyboardCtx.Provider>
@@ -172,14 +196,14 @@ function KeyboardField({ value, onChange, placeholder, style, numeric, mono, upp
         fontFamily: mono ? "monospace" : undefined,
         letterSpacing: mono ? 2 : undefined,
         fontWeight: mono ? 700 : undefined,
-        border: isActive ? "1px solid #F2B70588" : inputStyle.border,
+        border: isActive ? "1px solid var(--accent-88)" : inputStyle.border,
         cursor: "text",
         ...style,
       }}
     >
       {display ? <span>{display}</span> : <span style={{ color: "#5A6472" }}>{placeholder}</span>}
       {isActive && (
-        <span style={{ display: "inline-block", width: 1.5, height: 15, background: "#F2B705", marginLeft: 2, animation: "kbBlink 1s step-end infinite" }} />
+        <span style={{ display: "inline-block", width: 1.5, height: 15, background: "var(--accent)", marginLeft: 2, animation: "kbBlink 1s step-end infinite" }} />
       )}
     </div>
   );
@@ -225,13 +249,13 @@ function CustomKeyboard() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "0 2px" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => ctx.setTab("abc")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "abc" ? "#F2B705" : "#232A36", color: ctx.tab === "abc" ? "#14181F" : "#8A93A3" }}>
+          <button onClick={() => ctx.setTab("abc")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "abc" ? "var(--accent)" : "#232A36", color: ctx.tab === "abc" ? "#14181F" : "#8A93A3" }}>
             ABC
           </button>
-          <button onClick={() => ctx.setTab("num")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "num" ? "#F2B705" : "#232A36", color: ctx.tab === "num" ? "#14181F" : "#8A93A3" }}>
+          <button onClick={() => ctx.setTab("num")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "num" ? "var(--accent)" : "#232A36", color: ctx.tab === "num" ? "#14181F" : "#8A93A3" }}>
             123
           </button>
-          <button onClick={() => ctx.setTab("sym")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "sym" ? "#F2B705" : "#232A36", color: ctx.tab === "sym" ? "#14181F" : "#8A93A3" }}>
+          <button onClick={() => ctx.setTab("sym")} className="kb-key" style={{ flex: "none", padding: "6px 14px", background: ctx.tab === "sym" ? "var(--accent)" : "#232A36", color: ctx.tab === "sym" ? "#14181F" : "#8A93A3" }}>
             #+=
           </button>
         </div>
@@ -243,7 +267,7 @@ function CustomKeyboard() {
       {rows.map((row, i) => (
         <div className="kb-row" key={i}>
           {i === 2 && ctx.tab === "abc" && (
-            <button className="kb-key" style={{ flex: 1.5, background: ctx.shift ? "#F2B705" : "#232A36", color: ctx.shift ? "#14181F" : "#F5F6F7" }} onClick={() => ctx.setShift((s) => !s)}>
+            <button className="kb-key" style={{ flex: 1.5, background: ctx.shift ? "var(--accent)" : "#232A36", color: ctx.shift ? "#14181F" : "#F5F6F7" }} onClick={() => ctx.setShift((s) => !s)}>
               ⇧
             </button>
           )}
@@ -267,7 +291,7 @@ function CustomKeyboard() {
         <button className="kb-key" style={{ flex: 4 }} onClick={ctx.insertSpace}>
           espaço
         </button>
-        <button className="kb-key" style={{ flex: 1.7, background: "#F2B705", color: "#14181F" }} onClick={ctx.closeKeyboard}>
+        <button className="kb-key" style={{ flex: 1.7, background: "var(--accent)", color: "#14181F" }} onClick={ctx.closeKeyboard}>
           Concluído
         </button>
       </div>
@@ -450,7 +474,7 @@ function HomeScreen({ onLogin, onAdmin, onMembers }) {
     <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 380 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 36 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 13, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 24px #F2B70555" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 13, background: "linear-gradient(160deg, var(--accent), var(--accent-dark))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 24px var(--accent-55)" }}>
             <Zap size={30} color="#14181F" fill="#14181F" />
           </div>
           <div style={{ textAlign: "center" }}>
@@ -478,7 +502,7 @@ function HomeButton({ icon, label, desc, onClick, primary }) {
         alignItems: "center",
         gap: 14,
         textAlign: "left",
-        background: primary ? "#F2B705" : "#1A202B",
+        background: primary ? "var(--accent)" : "#1A202B",
         border: primary ? "none" : "1px solid #262D3A",
         borderRadius: 12,
         padding: "16px 18px",
@@ -505,7 +529,7 @@ function MembersScreen({ accounts, onBack }) {
           <ChevronLeft size={16} /> Voltar
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-          <Users size={18} color="#F2B705" />
+          <Users size={18} color="var(--accent)" />
           <div style={{ fontSize: 17, fontWeight: 700 }}>Membros da equipe</div>
         </div>
         {active.length === 0 ? (
@@ -518,7 +542,7 @@ function MembersScreen({ accounts, onBack }) {
                   {a.nome.trim().charAt(0).toUpperCase()}
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{a.nome}</div>
-                {a.papel === "dono" && <span style={{ fontSize: 10, color: "#F2B705", border: "1px solid #F2B70555", borderRadius: 5, padding: "1px 6px", marginLeft: "auto" }}>DONO</span>}
+                {a.papel === "dono" && <span style={{ fontSize: 10, color: "var(--accent)", border: "1px solid var(--accent-55)", borderRadius: 5, padding: "1px 6px", marginLeft: "auto" }}>DONO</span>}
               </div>
             ))}
           </div>
@@ -562,7 +586,7 @@ function LoginScreen({ accounts, removedAccounts, onCreateOwner, onLogin, onBack
           <ChevronLeft size={16} /> Voltar
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 28 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 9, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px #F2B70544" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 9, background: "linear-gradient(160deg, var(--accent), var(--accent-dark))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px var(--accent-44)" }}>
             <Zap size={22} color="#14181F" fill="#14181F" />
           </div>
           <div style={{ fontSize: 17, fontWeight: 700 }}>Painel de Serviços</div>
@@ -571,7 +595,7 @@ function LoginScreen({ accounts, removedAccounts, onCreateOwner, onLogin, onBack
         {needsSetup ? (
           <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <ShieldCheck size={16} color="#F2B705" />
+              <ShieldCheck size={16} color="var(--accent)" />
               <div style={{ fontSize: 14, fontWeight: 700 }}>Primeira vez por aqui</div>
             </div>
             <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 16 }}>Crie sua conta de dono. Você vai poder cadastrar e gerenciar os ajudantes depois.</div>
@@ -592,7 +616,7 @@ function LoginScreen({ accounts, removedAccounts, onCreateOwner, onLogin, onBack
             <button
               disabled={!setupName.trim() || !setupCode.trim()}
               onClick={() => onCreateOwner(setupName.trim(), setupCode.trim())}
-              style={{ width: "100%", background: setupName.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
+              style={{ width: "100%", background: setupName.trim() ? "var(--accent)" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
             >
               Criar minha conta
             </button>
@@ -616,7 +640,7 @@ function LoginScreen({ accounts, removedAccounts, onCreateOwner, onLogin, onBack
               />
             </Field>
             {msg && <div style={{ fontSize: 12.5, color: "#E85D4E", marginBottom: 12 }}>{msg}</div>}
-            <button onClick={tryLogin} disabled={!code.trim()} style={{ width: "100%", background: code.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+            <button onClick={tryLogin} disabled={!code.trim()} style={{ width: "100%", background: code.trim() ? "var(--accent)" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
               Entrar
             </button>
             <button onClick={onForgotCode} style={{ width: "100%", background: "none", border: "none", color: "#8A93A3", fontSize: 12.5, marginTop: 14, textAlign: "center" }}>
@@ -669,7 +693,7 @@ function RecoveryScreen({ accounts, requests, persistRequests, onBack }) {
 
         <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <KeyRound size={16} color="#F2B705" />
+            <KeyRound size={16} color="var(--accent)" />
             <div style={{ fontSize: 14, fontWeight: 700 }}>Recuperar código</div>
           </div>
           <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 18 }}>
@@ -693,7 +717,7 @@ function RecoveryScreen({ accounts, requests, persistRequests, onBack }) {
           </Field>
 
           {selectedId && myPending && (
-            <div style={{ background: "#F2B70518", border: "1px solid #F2B70544", color: "#F2B705", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+            <div style={{ background: "var(--accent-18)", border: "1px solid var(--accent-44)", color: "var(--accent)", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
               Já existe uma solicitação pendente pra você. Aguarde o dono aprovar e te passar o novo código.
             </div>
           )}
@@ -714,7 +738,7 @@ function RecoveryScreen({ accounts, requests, persistRequests, onBack }) {
             <button
               onClick={submit}
               disabled={!selectedId || !!myPending || inCooldown}
-              style={{ width: "100%", background: selectedId && !myPending && !inCooldown ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
+              style={{ width: "100%", background: selectedId && !myPending && !inCooldown ? "var(--accent)" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
             >
               Enviar solicitação ao dono
             </button>
@@ -907,7 +931,7 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
       <header style={{ padding: "20px 20px 16px", borderBottom: "1px solid #262D3A", position: "sticky", top: 0, background: "#14181Fee", backdropFilter: "blur(8px)", zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: 960, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(160deg, #F2B705, #C9950A)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px #F2B70544" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(160deg, var(--accent), var(--accent-dark))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px var(--accent-44)" }}>
               <Zap size={20} color="#14181F" fill="#14181F" />
             </div>
             <div>
@@ -953,9 +977,9 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
           <div style={{ background: "#E85D4E22", border: "1px solid #E85D4E55", color: "#F5A99E", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>
         )}
         {restrictedMsg && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#F2B70518", border: "1px solid #F2B70544", color: "#F2B705", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--accent-18)", border: "1px solid var(--accent-44)", color: "var(--accent)", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
             <span>Gerenciamento de contas é uma área restrita ao dono. Você entrou no app normalmente.</span>
-            <button onClick={onDismissRestricted} style={{ background: "none", border: "none", color: "#F2B705", flexShrink: 0 }}><X size={15} /></button>
+            <button onClick={onDismissRestricted} style={{ background: "none", border: "none", color: "var(--accent)", flexShrink: 0 }}><X size={15} /></button>
           </div>
         )}
 
@@ -969,7 +993,7 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
               <ChevronRight size={16} />
             </button>
             {weekOffset !== 0 && (
-              <button onClick={() => setWeekOffset(0)} style={{ fontSize: 12, color: "#F2B705", background: "none", border: "none", marginLeft: 4 }}>
+              <button onClick={() => setWeekOffset(0)} style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", marginLeft: 4 }}>
                 hoje
               </button>
             )}
@@ -994,9 +1018,9 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
             const dayJobs = jobsByDay[dayKey];
             const isToday = dayKey === fmtDateKey(new Date());
             return (
-              <div key={dayKey} style={{ background: "#1A202B", border: isToday ? "1px solid #F2B70566" : "1px solid #232A36", borderRadius: 12, overflow: "hidden" }}>
+              <div key={dayKey} style={{ background: "#1A202B", border: isToday ? "1px solid var(--accent-66)" : "1px solid #232A36", borderRadius: 12, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: dayJobs.length ? "1px solid #232A36" : "none" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: isToday ? "#F2B705" : "#C9D0DB", letterSpacing: "0.02em", textTransform: "uppercase" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: isToday ? "var(--accent)" : "#C9D0DB", letterSpacing: "0.02em", textTransform: "uppercase" }}>
                     {fmtDateLabel(dayKey)} {isToday && "· hoje"}
                   </div>
                   <button onClick={() => openNew(dayKey)} style={{ background: "none", border: "none", color: "#8A93A3", display: "flex", alignItems: "center", padding: 4 }}>
@@ -1049,7 +1073,7 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
 
       <button
         onClick={() => openNew(fmtDateKey(new Date()))}
-        style={{ position: "fixed", bottom: 24, right: 24, width: 54, height: 54, borderRadius: "50%", background: "#F2B705", border: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px #F2B70566" }}
+        style={{ position: "fixed", bottom: 24, right: 24, width: 54, height: 54, borderRadius: "50%", background: "var(--accent)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px var(--accent-66)" }}
       >
         <Plus size={24} color="#14181F" strokeWidth={2.5} />
       </button>
@@ -1097,7 +1121,7 @@ function MainApp({ currentUser, onLogout, accounts, persistAccounts, jobs, persi
                 <button
                   onClick={saveForm}
                   disabled={!form.cliente.trim()}
-                  style={{ flex: 1, background: form.cliente.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                  style={{ flex: 1, background: form.cliente.trim() ? "var(--accent)" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 >
                   <Check size={16} /> {editingId ? "Salvar alterações" : "Adicionar serviço"}
                 </button>
@@ -1167,7 +1191,7 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
     <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: 14, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", border: "1px solid #262D3A" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}><ShieldCheck size={17} color="#F2B705" /> Contas da equipe</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}><ShieldCheck size={17} color="var(--accent)" /> Contas da equipe</div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
         </div>
 
@@ -1199,11 +1223,11 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
 
           {pending.length > 0 && (
             <div style={{ marginBottom: 22 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#F2B705", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
                 <KeyRound size={13} /> Solicitações de recuperação
               </div>
               {pending.map((req) => (
-                <div key={req.id} style={{ background: "#F2B70512", border: "1px solid #F2B70533", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                <div key={req.id} style={{ background: "var(--accent-12)", border: "1px solid var(--accent-33)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>{req.nome} pediu um novo código</div>
                   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                     <div style={{ flex: 1 }}>
@@ -1217,7 +1241,7 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
                     <button onClick={() => denyRequest(req)} style={{ flex: 1, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 600 }}>
                       Negar
                     </button>
-                    <button onClick={() => approveRequest(req)} style={{ flex: 2, background: "#F2B705", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
+                    <button onClick={() => approveRequest(req)} style={{ flex: 2, background: "var(--accent)", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
                       Aprovar e gerar código
                     </button>
                   </div>
@@ -1233,7 +1257,7 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
                     {a.nome}
-                    {a.papel === "dono" && <span style={{ fontSize: 10, color: "#F2B705", border: "1px solid #F2B70555", borderRadius: 5, padding: "1px 6px" }}>DONO</span>}
+                    {a.papel === "dono" && <span style={{ fontSize: 10, color: "var(--accent)", border: "1px solid var(--accent-55)", borderRadius: 5, padding: "1px 6px" }}>DONO</span>}
                     {a.bloqueado && <span style={{ fontSize: 10, color: "#E85D4E", border: "1px solid #E85D4E55", borderRadius: 5, padding: "1px 6px" }}>BLOQUEADO</span>}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
@@ -1293,7 +1317,7 @@ function AdminPanel({ accounts, persistAccounts, requests, persistRequests, remo
               </div>
               <div style={{ fontSize: 11, color: "#5A6472", marginTop: 6 }}>Repasse esse código pro ajudante entrar no app.</div>
             </Field>
-            <button onClick={addAccount} disabled={!newName.trim()} style={{ width: "100%", background: newName.trim() ? "#F2B705" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+            <button onClick={addAccount} disabled={!newName.trim()} style={{ width: "100%", background: newName.trim() ? "var(--accent)" : "#3A4150", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
               Criar conta
             </button>
           </div>
@@ -1309,7 +1333,7 @@ function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#1A202B", borderRadius: 14, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", border: "1px solid #262D3A" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #232A36", position: "sticky", top: 0, background: "#1A202B" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
-            <ClipboardList size={17} color="#F2B705" /> Pedidos de clientes
+            <ClipboardList size={17} color="var(--accent)" /> Pedidos de clientes
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
         </div>
@@ -1318,7 +1342,7 @@ function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
             <div style={{ fontSize: 13, color: "#8A93A3" }}>Nenhum pedido novo no momento.</div>
           ) : (
             pedidos.map((p) => (
-              <div key={p.id} style={{ background: "#F2B70512", border: "1px solid #F2B70533", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+              <div key={p.id} style={{ background: "var(--accent-12)", border: "1px solid var(--accent-33)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{p.nome}</div>
                 <div style={{ fontSize: 12.5, color: "#C9D0DB", marginBottom: 2 }}>{p.servico}</div>
                 <div style={{ fontSize: 12, color: "#8A93A3", marginBottom: 2 }}>{p.endereco}</div>
@@ -1328,7 +1352,7 @@ function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
                   <button onClick={() => onRecusar(p)} style={{ flex: 1, background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 600 }}>
                     Recusar
                   </button>
-                  <button onClick={() => onAceitar(p)} style={{ flex: 2, background: "#F2B705", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
+                  <button onClick={() => onAceitar(p)} style={{ flex: 2, background: "var(--accent)", border: "none", color: "#14181F", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
                     Aceitar e agendar
                   </button>
                 </div>
@@ -1344,7 +1368,7 @@ function PedidosPanel({ pedidos, onAceitar, onRecusar, onClose }) {
 function MenuItem({ icon, label, onClick }) {
   return (
     <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7", width: "100%" }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#232A36", display: "flex", alignItems: "center", justifyContent: "center", color: "#F2B705", flexShrink: 0 }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#232A36", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)", flexShrink: 0 }}>
         {icon}
       </div>
       <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{label}</span>
@@ -1353,24 +1377,29 @@ function MenuItem({ icon, label, onClick }) {
 }
 
 function TemaScreen() {
-  const cores = [
-    { nome: "Ambar (padrao)", cor: "#F2B705" },
-    { nome: "Turquesa", cor: "#2DD4BF" },
-    { nome: "Vermelho", cor: "#E85D4E" },
-    { nome: "Azul", cor: "#4E8DE8" },
-  ];
+  const ctx = useKeyboardCtx();
+  const nomes = { ambar: "Ambar (padrao)", turquesa: "Turquesa", vermelho: "Vermelho", azul: "Azul" };
   return (
     <div>
       <div style={{ fontSize: 12.5, color: "#8A93A3", marginBottom: 16 }}>
-        Personalizacao de tema completa (modo claro, cores) esta em desenvolvimento. Em breve voce vai poder escolher entre essas opcoes:
+        Escolha a cor de destaque do app:
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        {cores.map((c) => (
-          <div key={c.cor} style={{ display: "flex", alignItems: "center", gap: 8, background: "#1E242E", border: "1px solid #2A3140", borderRadius: 10, padding: "10px 14px" }}>
-            <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.cor }} />
-            <span style={{ fontSize: 12.5 }}>{c.nome}</span>
-          </div>
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {Object.keys(ctx.THEMES).map((key) => {
+          const ativo = ctx.theme === key;
+          const cor = ctx.THEMES[key].accent;
+          return (
+            <button
+              key={key}
+              onClick={() => ctx.setTheme(key)}
+              style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", background: ativo ? cor + "18" : "#1E242E", border: ativo ? "1px solid " + cor + "88" : "1px solid #2A3140", borderRadius: 10, padding: "12px 14px", color: "#F5F6F7" }}
+            >
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: cor, flexShrink: 0 }} />
+              <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{nomes[key]}</span>
+              {ativo && <Check size={16} color={cor} />}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1414,7 +1443,7 @@ function EmpresaScreen() {
       <Field label="Horario de atendimento" style={{ marginBottom: 16 }}>
         <KeyboardField value={form.horario} onChange={(v) => setForm({ ...form, horario: v })} placeholder="Ex: seg-sab, 8h as 18h" />
       </Field>
-      <button onClick={salvar} style={{ width: "100%", background: "#F2B705", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+      <button onClick={salvar} style={{ width: "100%", background: "var(--accent)", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
         {saved ? "Salvo!" : "Salvar"}
       </button>
     </div>
@@ -1430,7 +1459,7 @@ function NotificacoesScreen({ ativo, onToggle }) {
       </div>
       <button
         onClick={() => onToggle(!ativo)}
-        style={{ width: 44, height: 26, borderRadius: 13, background: ativo ? "#F2B705" : "#3A4150", border: "none", position: "relative", flexShrink: 0 }}
+        style={{ width: 44, height: 26, borderRadius: 13, background: ativo ? "var(--accent)" : "#3A4150", border: "none", position: "relative", flexShrink: 0 }}
       >
         <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#14181F", position: "absolute", top: 3, left: ativo ? 21 : 3, transition: "left 0.15s" }} />
       </button>
@@ -1457,14 +1486,14 @@ function TecladoScreen({ enabled, onChange }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <button
         onClick={() => onChange(true)}
-        style={{ textAlign: "left", background: enabled ? "#F2B70518" : "#1E242E", border: enabled ? "1px solid #F2B70588" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
+        style={{ textAlign: "left", background: enabled ? "var(--accent-18)" : "#1E242E", border: enabled ? "1px solid var(--accent-88)" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
       >
         <div style={{ fontSize: 14, fontWeight: 700 }}>Teclado do aplicativo {enabled ? "(selecionado)" : ""}</div>
         <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 2 }}>Teclado proprio dentro do app, com abas de letras, numeros e simbolos.</div>
       </button>
       <button
         onClick={() => onChange(false)}
-        style={{ textAlign: "left", background: !enabled ? "#F2B70518" : "#1E242E", border: !enabled ? "1px solid #F2B70588" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
+        style={{ textAlign: "left", background: !enabled ? "var(--accent-18)" : "#1E242E", border: !enabled ? "1px solid var(--accent-88)" : "1px solid #2A3140", borderRadius: 10, padding: "14px 16px", color: "#F5F6F7" }}
       >
         <div style={{ fontSize: 14, fontWeight: 700 }}>Teclado do celular {!enabled ? "(selecionado)" : ""}</div>
         <div style={{ fontSize: 12, color: "#8A93A3", marginTop: 2 }}>Usa o teclado nativo do seu aparelho (com autocorretor, emojis, etc).</div>
@@ -1496,7 +1525,7 @@ function SettingsPanel({ currentUser, isOwner, onClose, onLogout, notificacoesAt
                 <ChevronLeft size={18} />
               </button>
             )}
-            <Settings size={17} color="#F2B705" />
+            <Settings size={17} color="var(--accent)" />
             {titulos[screen]}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A93A3" }}><X size={20} /></button>
