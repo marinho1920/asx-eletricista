@@ -500,6 +500,8 @@ function HomeScreen({ onLogin, onAdmin, onMembers }) {
 }
 
 function HomeButton({ icon, label, desc, onClick, primary }) {
+  const ctx = useKeyboardCtx();
+  const accentColor = (ctx.THEMES[ctx.theme] || ctx.THEMES.ambar).accent;
   return (
     <button
       onClick={onClick}
@@ -508,7 +510,7 @@ function HomeButton({ icon, label, desc, onClick, primary }) {
         alignItems: "center",
         gap: 14,
         textAlign: "left",
-        background: primary ? "var(--accent, #F2B705)" : "#1A202B",
+        background: primary ? accentColor : "#1A202B",
         border: primary ? "none" : "1px solid #262D3A",
         borderRadius: 12,
         padding: "16px 18px",
