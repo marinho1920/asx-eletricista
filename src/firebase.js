@@ -57,3 +57,29 @@ export async function atualizarStatusPedido(id, status) {
     return false;
   }
 }
+
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from "firebase/auth";
+
+export const auth = getAuth(app);
+
+export async function registrar(email, senha) {
+  const cred = await createUserWithEmailAndPassword(auth, email, senha);
+  return cred.user;
+}
+
+export async function entrar(email, senha) {
+  const cred = await signInWithEmailAndPassword(auth, email, senha);
+  return cred.user;
+}
+
+export async function sair() {
+  await signOut(auth);
+}
+
+export function ouvirAuth(callback) {
+  return onAuthStateChanged(auth, callback);
+}
+
+export async function recuperarSenha(email) {
+  await sendPasswordResetEmail(auth, email);
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
 import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound, ClipboardList, Settings, Palette, Building2, Bell } from "lucide-react";
-import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido } from "./firebase.js";
+import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido, entrar, registrar, sair, ouvirAuth, recuperarSenha } from "./firebase.js";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 const STATUS = {
@@ -314,11 +314,16 @@ function AppInner() {
   const [jobs, setJobs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [removedAccounts, setRemovedAccounts] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
   const [error, setError] = useState(null);
   const [screen, setScreen] = useState("home"); // home | login | membros
   const [pendingAdmin, setPendingAdmin] = useState(false);
   const [restrictedMsg, setRestrictedMsg] = useState(false);
+  const [authUser, setAuthUser] = useState(undefined);
+
+  useEffect(() => {
+    const unsub = ouvirAuth((user) => setAuthUser(user || null));
+    return () => unsub && unsub();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -386,7 +391,7 @@ function AppInner() {
     } catch (e) {}
   }
 
-  if (booting || accounts === null) {
+  if (booting || accounts === null || authUser === undefined) {
     return (
       <div style={{ minHeight: "100vh", background: "#14181F", color: "#8A93A3", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13 }}>
         Carregando…
@@ -394,14 +399,19 @@ function AppInner() {
     );
   }
 
-  if (currentUser) {
+  const contaAtual = authUser ? accounts.find((a) => a.uid === authUser.uid) : null;
+
+  if (authUser && contaAtual) {
+    if (contaAtual.bloqueado) {
+      return <ContaBloqueadaScreen onLogout={() => sair()} />;
+    }
+    if (!contaAtual.aprovado) {
+      return <AguardandoAprovacaoScreen nome={contaAtual.nome} onLogout={() => sair()} />;
+    }
     return (
       <MainApp
-        currentUser={currentUser}
-        onLogout={() => {
-          setCurrentUser(null);
-          setScreen("home");
-        }}
+        currentUser={contaAtual}
+        onLogout={() => sair()}
         accounts={accounts}
         persistAccounts={persistAccounts}
         jobs={jobs}
@@ -411,49 +421,20 @@ function AppInner() {
         removedAccounts={removedAccounts}
         persistRemovedAccounts={persistRemovedAccounts}
         error={error}
-        initialShowAdmin={pendingAdmin && currentUser.papel === "dono"}
-        onAdminOpened={() => setPendingAdmin(false)}
-        restrictedMsg={restrictedMsg && pendingAdmin && currentUser.papel !== "dono"}
-        onDismissRestricted={() => {
-          setRestrictedMsg(false);
-          setPendingAdmin(false);
-        }}
+        initialShowAdmin={false}
+        onAdminOpened={() => {}}
+        restrictedMsg={false}
+        onDismissRestricted={() => {}}
       />
     );
+  }
+
+  if (authUser && !contaAtual) {
+    return <ContaNaoAutorizadaScreen onLogout={() => sair()} />;
   }
 
   if (screen === "login") {
-    return (
-      <LoginScreen
-        accounts={accounts}
-        removedAccounts={removedAccounts}
-        onBack={() => {
-          setScreen("home");
-          setPendingAdmin(false);
-        }}
-        onForgotCode={() => setScreen("recuperar")}
-        onCreateOwner={(nome, codigo) => {
-          const owner = { id: uid(), nome, codigo, papel: "dono", bloqueado: false };
-          persistAccounts([owner]);
-          setCurrentUser(owner);
-        }}
-        onLogin={(acc) => {
-          if (pendingAdmin && acc.papel !== "dono") setRestrictedMsg(true);
-          setCurrentUser(acc);
-        }}
-      />
-    );
-  }
-
-  if (screen === "recuperar") {
-    return (
-      <RecoveryScreen
-        accounts={accounts}
-        requests={requests}
-        persistRequests={persistRequests}
-        onBack={() => setScreen("login")}
-      />
-    );
+    return <EmailAuthScreen accounts={accounts} persistAccounts={persistAccounts} onBack={() => setScreen("home")} />;
   }
 
   if (screen === "membros") {
@@ -462,14 +443,8 @@ function AppInner() {
 
   return (
     <HomeScreen
-      onLogin={() => {
-        setPendingAdmin(false);
-        setScreen("login");
-      }}
-      onAdmin={() => {
-        setPendingAdmin(true);
-        setScreen("login");
-      }}
+      onLogin={() => setScreen("login")}
+      onAdmin={() => setScreen("login")}
       onMembers={() => setScreen("membros")}
     />
   );
@@ -490,7 +465,7 @@ function HomeScreen({ onLogin, onAdmin, onMembers }) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <HomeButton icon={<Lock size={18} />} label="Login" desc="Entrar com seu código de acesso" onClick={onLogin} primary />
+          <HomeButton icon={<Lock size={18} />} label="Login" desc="Entrar ou criar conta" onClick={onLogin} primary />
           <HomeButton icon={<ShieldCheck size={18} />} label="Gerenciamento de contas" desc="Área restrita ao dono" onClick={onAdmin} />
           <HomeButton icon={<Users size={18} />} label="Membros" desc="Ver quem faz parte da equipe" onClick={onMembers} />
         </div>
@@ -1557,6 +1532,195 @@ function SettingsPanel({ currentUser, isOwner, onClose, onLogout, notificacoesAt
           {screen === "conta" && <ContaScreen currentUser={currentUser} isOwner={isOwner} onLogout={onLogout} />}
           {screen === "teclado" && <TecladoScreen enabled={ctx.enabled} onChange={ctx.setEnabled} />}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EmailAuthScreen({ accounts, persistAccounts, onBack }) {
+  const [modo, setModo] = useState("entrar");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [nome, setNome] = useState("");
+  const [msg, setMsg] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  async function fazerLogin() {
+    setErro(""); setMsg("");
+    if (!email.trim() || !senha) return;
+    setCarregando(true);
+    try {
+      await entrar(email.trim(), senha);
+    } catch (e) {
+      setErro(traduzErroAuth(e));
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function fazerCadastro() {
+    setErro(""); setMsg("");
+    if (!nome.trim() || !email.trim() || !senha) return;
+    if (senha.length < 6) {
+      setErro("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    setCarregando(true);
+    try {
+      const user = await registrar(email.trim(), senha);
+      const novaConta = {
+        id: user.uid,
+        uid: user.uid,
+        nome: nome.trim(),
+        papel: "dono",
+        aprovado: true,
+        bloqueado: false,
+      };
+      await persistAccounts([...accounts, novaConta]);
+    } catch (e) {
+      setErro(traduzErroAuth(e));
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function enviarRecuperacao() {
+    setErro(""); setMsg("");
+    if (!email.trim()) {
+      setErro("Digite seu e-mail primeiro.");
+      return;
+    }
+    setCarregando(true);
+    try {
+      await recuperarSenha(email.trim());
+      setMsg("Enviamos um link de redefinicao para o seu e-mail.");
+    } catch (e) {
+      setErro(traduzErroAuth(e));
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A93A3", fontSize: 13, padding: "0 0 18px", marginLeft: -2 }}>
+          <ChevronLeft size={16} /> Voltar
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 28 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 9, background: "linear-gradient(160deg, var(--accent, #F2B705), var(--accent-dark, #C9950A))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Zap size={22} color="#14181F" fill="#14181F" />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>Painel de Servicos</div>
+        </div>
+
+        <div style={{ background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 22 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            <button onClick={() => { setModo("entrar"); setErro(""); setMsg(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: modo === "entrar" ? "var(--accent, #F2B705)" : "#232A36", color: modo === "entrar" ? "#14181F" : "#8A93A3", fontWeight: 700, fontSize: 13 }}>
+              Entrar
+            </button>
+            <button onClick={() => { setModo("cadastro"); setErro(""); setMsg(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: modo === "cadastro" ? "var(--accent, #F2B705)" : "#232A36", color: modo === "cadastro" ? "#14181F" : "#8A93A3", fontWeight: 700, fontSize: 13 }}>
+              Criar conta
+            </button>
+          </div>
+
+          {modo === "cadastro" && (
+            <Field label="Seu nome" style={{ marginBottom: 12 }}>
+              <KeyboardField value={nome} onChange={setNome} placeholder="Ex: Alexandre" />
+            </Field>
+          )}
+          <Field label="E-mail" style={{ marginBottom: 12 }}>
+            <KeyboardField value={email} onChange={setEmail} placeholder="seuemail@exemplo.com" />
+          </Field>
+          <Field label="Senha" style={{ marginBottom: 16 }}>
+            <KeyboardField value={senha} onChange={setSenha} placeholder="Minimo 6 caracteres" mono />
+          </Field>
+
+          {erro && <div style={{ fontSize: 12.5, color: "#E85D4E", marginBottom: 12 }}>{erro}</div>}
+          {msg && <div style={{ fontSize: 12.5, color: "#2DD4BF", marginBottom: 12 }}>{msg}</div>}
+
+          <button
+            onClick={modo === "entrar" ? fazerLogin : fazerCadastro}
+            disabled={carregando}
+            style={{ width: "100%", background: "var(--accent, #F2B705)", border: "none", color: "#14181F", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}
+          >
+            {carregando ? "Aguarde..." : modo === "entrar" ? "Entrar" : "Criar minha conta"}
+          </button>
+
+          {modo === "entrar" && (
+            <button onClick={enviarRecuperacao} disabled={carregando} style={{ width: "100%", background: "none", border: "none", color: "#8A93A3", fontSize: 12.5, marginTop: 14, textAlign: "center" }}>
+              Esqueci minha senha
+            </button>
+          )}
+
+          {modo === "cadastro" && (
+            <div style={{ fontSize: 11.5, color: "#5A6472", marginTop: 14, textAlign: "center" }}>
+              Sua conta fica pendente ate o dono aprovar (exceto se voce for o primeiro a se cadastrar).
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function traduzErroAuth(e) {
+  const codigo = e && e.code ? e.code : "";
+  if (codigo.includes("email-already-in-use")) return "Esse e-mail ja tem uma conta. Tente entrar.";
+  if (codigo.includes("invalid-email")) return "E-mail invalido.";
+  if (codigo.includes("weak-password")) return "Senha muito fraca (minimo 6 caracteres).";
+  if (codigo.includes("user-not-found") || codigo.includes("wrong-password") || codigo.includes("invalid-credential")) return "E-mail ou senha incorretos.";
+  if (codigo.includes("too-many-requests")) return "Muitas tentativas. Aguarde um pouco e tente de novo.";
+  return "Nao foi possivel completar. Tente novamente.";
+}
+
+function AguardandoAprovacaoScreen({ nome, onLogout }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380, background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 26, textAlign: "center" }}>
+        <div style={{ fontSize: 34, marginBottom: 12 }}>⏳</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Aguardando aprovacao</div>
+        <div style={{ fontSize: 13, color: "#8A93A3", marginBottom: 20 }}>
+          Ola, {nome}! Sua conta foi criada mas ainda precisa ser aprovada pelo dono da equipe.
+        </div>
+        <button onClick={onLogout} style={{ width: "100%", background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ContaNaoAutorizadaScreen({ onLogout }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380, background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 26, textAlign: "center" }}>
+        <div style={{ fontSize: 34, marginBottom: 12 }}>🚫</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Conta nao autorizada</div>
+        <div style={{ fontSize: 13, color: "#8A93A3", marginBottom: 20 }}>
+          Essa conta nao tem mais acesso a esse app. Fale com o dono da equipe se achar que isso e um erro.
+        </div>
+        <button onClick={onLogout} style={{ width: "100%", background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ContaBloqueadaScreen({ onLogout }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 380, background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 26, textAlign: "center" }}>
+        <div style={{ fontSize: 34, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Conta bloqueada</div>
+        <div style={{ fontSize: 13, color: "#8A93A3", marginBottom: 20 }}>
+          Essa conta foi bloqueada pelo dono da equipe.
+        </div>
+        <button onClick={onLogout} style={{ width: "100%", background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
+          Sair
+        </button>
       </div>
     </div>
   );
