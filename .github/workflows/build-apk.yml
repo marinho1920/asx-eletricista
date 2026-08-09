@@ -38,6 +38,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Restaurar chave de assinatura fixa
+        run: |
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
+
+      - name: Restaurar chave de assinatura fixa
+        run: |
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
+
       - name: Dar permissão de execução ao gradlew
         run: chmod +x android/gradlew
 
