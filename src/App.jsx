@@ -326,6 +326,15 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
+    if (authUser && accounts && accounts.length === 1) {
+      const conta = accounts[0];
+      if (conta.uid !== authUser.uid) {
+        persistAccounts([{ ...conta, uid: authUser.uid, id: authUser.uid }]);
+      }
+    }
+  }, [authUser, accounts]);
+
+  useEffect(() => {
     (async () => {
       let a = null;
       for (let tentativa = 0; tentativa < 4 && !a; tentativa++) {
