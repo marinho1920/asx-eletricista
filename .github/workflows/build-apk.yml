@@ -29,6 +29,28 @@ jobs:
       - name: Adicionar plataforma Android
         run: npx cap add android
 
+      - name: Configurar assinatura fixa do debug
+        run: |
+          cp signing/debug.keystore android/app/debug.keystore
+          cat >> android/app/build.gradle << 'GRADLEEOF'
+
+          android {
+              signingConfigs {
+                  debug {
+                      storeFile file("debug.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }
+              buildTypes {
+                  debug {
+                      signingConfig signingConfigs.debug
+                  }
+              }
+          }
+          GRADLEEOF
+
       - name: Sincronizar Capacitor
         run: npx cap sync android
 
@@ -37,11 +59,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Restaurar chave de assinatura fixa
-        run: |
-          mkdir -p ~/.android
-          cp signing/debug.keystore ~/.android/debug.keystore
 
       - name: Restaurar chave de assinatura fixa
         run: |
