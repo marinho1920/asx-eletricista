@@ -439,7 +439,7 @@ function AppInner() {
   }
 
   if (authUser && !contaAtual) {
-    return <ContaNaoAutorizadaScreen onLogout={() => sair()} />;
+    return <ContaNaoAutorizadaScreen onLogout={() => sair()} debugUid={authUser.uid} debugAccounts={accounts} />;
   }
 
   if (screen === "login") {
@@ -1701,7 +1701,7 @@ function AguardandoAprovacaoScreen({ nome, onLogout }) {
   );
 }
 
-function ContaNaoAutorizadaScreen({ onLogout }) {
+function ContaNaoAutorizadaScreen({ onLogout, debugUid, debugAccounts }) {
   return (
     <div style={{ minHeight: "100vh", background: "#14181F", color: "#F5F6F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 380, background: "#1A202B", border: "1px solid #262D3A", borderRadius: 14, padding: 26, textAlign: "center" }}>
@@ -1713,6 +1713,11 @@ function ContaNaoAutorizadaScreen({ onLogout }) {
         <button onClick={onLogout} style={{ width: "100%", background: "#1E242E", border: "1px solid #2A3140", color: "#8A93A3", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>
           Sair
         </button>
+        <div style={{ marginTop: 20, textAlign: "left", background: "#12161D", border: "1px solid #2A3140", borderRadius: 8, padding: 12 }}>
+          <div style={{ fontSize: 10.5, color: "#5A6472", marginBottom: 6, textTransform: "uppercase" }}>Debug (temporario)</div>
+          <div style={{ fontSize: 10.5, color: "#8A93A3", wordBreak: "break-all", marginBottom: 8 }}>meu uid: {String(debugUid)}</div>
+          <div style={{ fontSize: 10.5, color: "#8A93A3", wordBreak: "break-all" }}>contas: {JSON.stringify(debugAccounts)}</div>
+        </div>
       </div>
     </div>
   );
