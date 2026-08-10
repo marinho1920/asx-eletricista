@@ -326,7 +326,13 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
-    if (authUser && accounts && accounts.length === 1) {
+    if (!authUser || !accounts) return;
+    if (accounts.length === 0) {
+      const apelido = authUser.email ? authUser.email.split("@")[0] : "Dono";
+      persistAccounts([{ id: authUser.uid, uid: authUser.uid, nome: apelido, papel: "dono", aprovado: true, bloqueado: false }]);
+      return;
+    }
+    if (accounts.length === 1) {
       const conta = accounts[0];
       if (conta.uid !== authUser.uid) {
         persistAccounts([{ ...conta, uid: authUser.uid, id: authUser.uid }]);
