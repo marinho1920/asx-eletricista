@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
 import { Zap, Plus, X, MapPin, User, Clock, Trash2, Check, ChevronLeft, ChevronRight, Users, Lock, LogOut, ShieldCheck, Eye, EyeOff, Ban, KeyRound, ClipboardList, Settings, Palette, Building2, Bell } from "lucide-react";
-import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido, entrar, registrar, sair, ouvirAuth, recuperarSenha } from "./firebase.js";
+import { storageGet, storageSet, ouvirPedidosPendentes, atualizarStatusPedido, entrar, registrar, sair, ouvirAuth, recuperarSenha, entrarComoVisitante } from "./firebase.js";
 import { LocalNotifications } from "@capacitor/local-notifications";
-
+import Onboarding from "./components/Onboarding";
 const STATUS = {
   agendado: { label: "Agendado", color: "#8A93A3", glow: "none" },
   andamento: { label: "Em andamento", color: "var(--accent, #F2B705)", glow: "0 0 10px var(--accent-88, #F2B70588)" },
@@ -299,7 +299,15 @@ function CustomKeyboard() {
   );
 }
 // ---- fim teclado personalizado ----
-
+async function criarContaOnboarding({ email, senha, visitante }) {
+    if (visitante) {
+        await entrarComoVisitante();
+          } else {
+              await registrar(email.trim(), senha);
+                }
+                  localStorage.setItem("onboardingCompleto", "true");
+                  
+}
 export default function App() {
   return (
     <KeyboardProvider>
@@ -448,7 +456,17 @@ function AppInner() {
     return <ContaNaoAutorizadaScreen onLogout={() => sair()} debugUid={authUser.uid} debugAccounts={accounts} />;
   }
 
-  if (screen === "login") {
+
+  if (!authUser && accounts.length === 0 && localStorage.getItem("onboardingCompleto") !== "true") {
+      return (
+          <Onboarding
+                onCreateAccount={criarContaOnboarding}
+                      onFinish={() => {}}
+                            onGoToLogin={() => setScreen("login")}
+                                />
+                                  );
+                                  }
+  if ( "login") {
     return <EmailAuthScreen accounts={accounts} persistAccounts={persistAccounts} onBack={() => setScreen("home")} />;
   }
 

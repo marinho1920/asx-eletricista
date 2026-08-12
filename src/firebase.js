@@ -58,7 +58,7 @@ export async function atualizarStatusPedido(id, status) {
   }
 }
 
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, signInAnonymously } from "firebase/auth";
 
 export const auth = getAuth(app);
 
@@ -82,4 +82,8 @@ export function ouvirAuth(callback) {
 
 export async function recuperarSenha(email) {
   await sendPasswordResetEmail(auth, email);
+}
+export async function entrarComoVisitante() {
+    const cred = await signInAnonymously(auth);
+      return cred.user;
 }
