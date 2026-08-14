@@ -457,7 +457,7 @@ function AppInner() {
   }
 
 
-  if (!authUser && accounts.length === 0 && localStorage.getItem("onboardingCompleto") !== "true") {
+  if (!authUser && accounts.length === 0 && screen !== "login" && localStorage.getItem("onboardingCompleto") !== "true") {
       return (
           <Onboarding
                 onCreateAccount={criarContaOnboarding}
@@ -466,7 +466,7 @@ function AppInner() {
                                 />
                                   );
                                   }
-  if ( "login") {
+  if (screen === "login") {
     return <EmailAuthScreen accounts={accounts} persistAccounts={persistAccounts} onBack={() => setScreen("home")} />;
   }
 
