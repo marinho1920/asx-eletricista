@@ -25,7 +25,6 @@ export async function storageGet(key) {
     return null;
   }
 }
-
 export async function storageSet(key, value) {
   try {
     const ref = doc(db, COLLECTION, key);
@@ -33,7 +32,7 @@ export async function storageSet(key, value) {
     return true;
   } catch (e) {
     console.error("Erro ao salvar no Firestore:", e);
-    return false;
+    throw e;
   }
 }
 

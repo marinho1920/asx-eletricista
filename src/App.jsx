@@ -388,14 +388,14 @@ function AppInner() {
   }
 
   async function persistJobs(next) {
-    setJobs(next);
-    try {
-      const ok = await storageSet("servicos", JSON.stringify(next));
-      if (!ok) setError("Não consegui salvar. Tente de novo.");
-      else setError(null);
-    } catch (e) {
-      setError("Não consegui salvar. Tente de novo.");
-    }
+      setJobs(next);
+        try {
+            await storageSet("servicos", JSON.stringify(next));
+                setError(null);
+                  } catch (e) {
+                      setError("Não consegui salvar: " + (e.message || e.code || "erro desconhecido"));
+                        }
+                        
   }
 
   async function persistRequests(next) {
